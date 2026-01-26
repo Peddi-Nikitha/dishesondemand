@@ -1,0 +1,270 @@
+import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../theme/app_theme.dart';
+import '../../utils/theme_helper.dart';
+import 'delivery_create_account_screen.dart';
+import '../auth/sign_in_screen.dart';
+
+/// Delivery welcome screen matching the exact design from screenshot
+/// Dark theme with grocery delivery focus
+class DeliveryWelcomeScreen extends StatelessWidget {
+  const DeliveryWelcomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: ThemeHelper.getBackgroundColor(context),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Top section with image (60% of screen)
+            Expanded(
+              flex: 6,
+              child: Stack(
+                children: [
+                  // Background with pattern
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: ThemeHelper.getBackgroundColor(context),
+                    ),
+                    child: CustomPaint(
+                      painter: _GroceryPatternPainter(context),
+                      child: Container(),
+                    ),
+                  ),
+                  // Main image - man with grocery bag
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Image.network(
+                        'https://images.unsplash.com/photo-1607082349566-187342175e2f?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80',
+                        height: MediaQuery.of(context).size.height * 0.5,
+                        fit: BoxFit.contain,
+                        headers: const {
+                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                          'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Icon(
+                            Icons.shopping_bag,
+                            size: 200,
+                            color: ThemeHelper.getPrimaryColor(context),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  // Floating icons - matching screenshot positions
+                  Positioned(
+                    top: 40,
+                    left: 24,
+                    child: _buildFloatingIcon(context, Icons.location_on),
+                  ),
+                  Positioned(
+                    top: 40,
+                    right: 24,
+                    child: _buildFloatingIcon(context, Icons.motorcycle),
+                  ),
+                  Positioned(
+                    bottom: 100,
+                    left: 24,
+                    child: _buildFloatingIcon(context, Icons.chat_bubble_outline),
+                  ),
+                  Positioned(
+                    bottom: 100,
+                    right: 24,
+                    child: _buildFloatingIcon(context, Icons.restaurant),
+                  ),
+                ],
+              ),
+            ),
+            // Bottom section with text and button (40% of screen)
+            Expanded(
+              flex: 4,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(AppTheme.spacingL),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Headline with highlighted text - "Let's find the Best & Healthy Grocery"
+                    _buildHeadline(context),
+                    const SizedBox(height: AppTheme.spacingM),
+                    // Body text
+                    Text(
+                      'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: ThemeHelper.getTextSecondaryColor(context),
+                      ),
+                    ),
+                    const SizedBox(height: AppTheme.spacingXL),
+                    // Get Started button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const DeliveryCreateAccountScreen(),
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ThemeHelper.getPrimaryColor(context),
+                          foregroundColor: AppColors.textOnPrimary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          "Let's Get Started",
+                          style: AppTextStyles.buttonLarge,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppTheme.spacingM),
+                    // Sign In link
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Already have an account? ',
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: ThemeHelper.getTextSecondaryColor(context),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const SignInScreen(),
+                              ),
+                            );
+                          },
+                          child: Text(
+                            'Sign In',
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: ThemeHelper.getPrimaryColor(context),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeadline(BuildContext context) {
+    return RichText(
+      textAlign: TextAlign.center,
+      text: TextSpan(
+        style: AppTextStyles.headlineMedium.copyWith(
+          color: ThemeHelper.getTextPrimaryColor(context),
+        ),
+        children: [
+          const TextSpan(text: "Let's find the "),
+          TextSpan(
+            text: 'Best',
+            style: AppTextStyles.headlineMedium.copyWith(
+              color: ThemeHelper.getPrimaryColor(context),
+            ),
+          ),
+          const TextSpan(text: ' & '),
+          TextSpan(
+            text: 'Healthy Grocery',
+            style: AppTextStyles.headlineMedium.copyWith(
+              color: ThemeHelper.getPrimaryColor(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingIcon(BuildContext context, IconData icon) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: ThemeHelper.getSurfaceColor(context),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: ThemeHelper.isDarkMode(context)
+                ? Colors.black.withValues(alpha: 0.3)
+                : AppColors.shadow,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(
+        icon,
+        color: ThemeHelper.getPrimaryColor(context),
+        size: 24,
+      ),
+    );
+  }
+}
+
+/// Custom painter for grocery pattern background
+class _GroceryPatternPainter extends CustomPainter {
+  final BuildContext context;
+  
+  _GroceryPatternPainter(this.context);
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final isDark = ThemeHelper.isDarkMode(context);
+    final paint = Paint()
+      ..color = (isDark ? AppColors.darkDivider : AppColors.divider)
+          .withValues(alpha: 0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    // Draw grocery-related icons as simple line art
+    final icons = [
+      Icons.shopping_basket,
+      Icons.local_grocery_store,
+      Icons.restaurant_menu,
+      Icons.fastfood,
+      Icons.cake,
+      Icons.local_dining,
+      Icons.set_meal,
+      Icons.eco,
+    ];
+
+    final spacing = size.width / 8;
+    final iconSize = 24.0;
+
+    for (int i = 0; i < icons.length; i++) {
+      final x = spacing * (i + 1);
+      final y = size.height * 0.3 + (i % 2) * 60;
+      // Simple circle representation for icons
+      canvas.drawCircle(
+        Offset(x, y),
+        iconSize / 2,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
