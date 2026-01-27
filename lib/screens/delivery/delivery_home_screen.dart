@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
@@ -12,6 +15,7 @@ import '../../providers/order_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../models/order_model.dart';
 import '../../utils/constants.dart';
+import '../../services/location_service.dart';
 import 'notifications_screen.dart';
 import 'earnings_screen.dart';
 import 'delivery_profile_screen.dart';
@@ -28,6 +32,7 @@ class DeliveryHomeScreen extends StatefulWidget {
 
 class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
   int _currentNavIndex = 0;
+  StreamSubscription<Position>? _locationSub;
 
   // Profile image URL
   static const String profileImageUrl =
@@ -46,7 +51,27 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
       if (user != null) {
         orderProvider.loadDeliveryBoyOrders(user.uid);
         notificationProvider.setDeliveryBoyId(user.uid);
+        _startLocationTracking(authProvider);
       }
+    });
+  }
+
+  @override
+  void dispose() {
+    _locationSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _startLocationTracking(AuthProvider authProvider) async {
+    final granted = await LocationService.ensurePermission();
+    if (!granted) return;
+
+    _locationSub?.cancel();
+    _locationSub = LocationService.getPositionStream().listen((position) {
+      authProvider.updateDeliveryBoyLocation(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
     });
   }
 

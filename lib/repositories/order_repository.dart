@@ -1,10 +1,13 @@
 import '../models/order_model.dart';
 import '../services/firestore_service.dart';
 import '../utils/constants.dart';
+import 'notification_repository.dart';
 
 /// Repository for order operations
 class OrderRepository {
   final FirestoreService _firestoreService = FirestoreService();
+  final NotificationRepository _notificationRepository =
+      NotificationRepository();
 
   /// Create order
   Future<String> createOrder(OrderModel order) async {
@@ -247,6 +250,15 @@ class OrderRepository {
           'assignedAt': DateTime.now().toIso8601String(),
           'updatedAt': DateTime.now().toIso8601String(),
         },
+      );
+
+      // Create in-app notification for the assigned delivery boy
+      await _notificationRepository.createDeliveryBoyNotification(
+        deliveryBoyId: deliveryBoyId,
+        title: 'New order assigned',
+        message: 'You have been assigned a new delivery order.',
+        type: 'order_assigned',
+        orderId: orderId,
       );
     } catch (e) {
       throw 'Error assigning delivery boy: $e';
