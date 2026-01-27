@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
@@ -7,9 +8,9 @@ import '../../widgets/cart_item_card.dart';
 import '../../widgets/promo_code_input.dart';
 import '../../widgets/order_summary.dart';
 import '../checkout/delivery_address_screen.dart';
-import '../../models/menu_item.dart';
+import '../../providers/cart_provider.dart';
 
-/// Production-ready shopping cart screen matching the exact design
+/// Production-ready shopping cart screen with Firestore integration
 class ShoppingCartScreen extends StatefulWidget {
   const ShoppingCartScreen({super.key});
 
@@ -19,22 +20,6 @@ class ShoppingCartScreen extends StatefulWidget {
 
 class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
   final TextEditingController _promoCodeController = TextEditingController();
-  
-  // Dish quantities
-  int _pastaQuantity = 1;
-  int _pizzaQuantity = 1;
-  int _burgerQuantity = 1;
-  int _saladQuantity = 1;
-
-  // Helper method to get image URL from MenuData
-  String _getImageUrl(String itemName) {
-    final allItems = MenuData.allItems;
-    final item = allItems.firstWhere(
-      (item) => item.name == itemName,
-      orElse: () => allItems.first,
-    );
-    return item.imageUrl;
-  }
 
   @override
   void dispose() {
@@ -42,143 +27,131 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     super.dispose();
   }
 
+  String _calculateDiscountPercentage(CartProvider cartProvider) {
+    if (cartProvider.subtotal > 0 && cartProvider.discount > 0) {
+      return '${cartProvider.discountPercentage.toStringAsFixed(0)}%';
+    }
+    return '0%';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ThemeHelper.getBackgroundColor(context),
       body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            _buildHeader(),
-            // Scrollable Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppTheme.spacingM),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Product List
-                    CartItemCard(
-                      imageUrl: _getImageUrl('Creamy Pasta'),
-                      title: 'Creamy Pasta',
-                      quantity: '1 serving',
-                      currentPrice: '\$15',
-                      originalPrice: '\$18',
-                      discountBadge: '35% OFF',
-                      itemQuantity: _pastaQuantity,
-                      onRemove: () {
-                        // Handle remove
-                      },
-                      onDecrease: () {
-                        if (_pastaQuantity > 1) {
-                          setState(() {
-                            _pastaQuantity--;
-                          });
-                        }
-                      },
-                      onIncrease: () {
-                        setState(() {
-                          _pastaQuantity++;
-                        });
-                      },
+        child: Consumer<CartProvider>(
+          builder: (context, cartProvider, child) {
+            if (cartProvider.items.isEmpty) {
+              return Column(
+                children: [
+                  _buildHeader(),
+                  Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.shopping_cart_outlined,
+                            size: 80,
+                            color: ThemeHelper.getTextSecondaryColor(context),
+                          ),
+                          const SizedBox(height: AppTheme.spacingL),
+                          Text(
+                            'Your cart is empty',
+                            style: AppTextStyles.titleMedium.copyWith(
+                              color: ThemeHelper.getTextPrimaryColor(context),
+                            ),
+                          ),
+                          const SizedBox(height: AppTheme.spacingS),
+                          Text(
+                            'Add some items to get started',
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: ThemeHelper.getTextSecondaryColor(context),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    CartItemCard(
-                      imageUrl: _getImageUrl('Margherita Pizza'),
-                      title: 'Margherita Pizza',
-                      quantity: '1 large',
-                      currentPrice: '\$20',
-                      originalPrice: '\$24',
-                      discountBadge: '35% OFF',
-                      itemQuantity: _pizzaQuantity,
-                      onRemove: () {
-                        // Handle remove
-                      },
-                      onDecrease: () {
-                        if (_pizzaQuantity > 1) {
-                          setState(() {
-                            _pizzaQuantity--;
-                          });
-                        }
-                      },
-                      onIncrease: () {
-                        setState(() {
-                          _pizzaQuantity++;
-                        });
-                      },
+                  ),
+                ],
+              );
+            }
+
+            return Column(
+              children: [
+                // Header
+                _buildHeader(),
+                // Scrollable Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(AppTheme.spacingM),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Product List
+                        ...cartProvider.items.map((cartItem) {
+                          final product = cartItem.product;
+                          final discountPercent = product.originalPrice != null &&
+                                  product.originalPrice! > product.currentPrice
+                              ? ((product.originalPrice! - product.currentPrice) /
+                                      product.originalPrice! *
+                                      100)
+                                  .toStringAsFixed(0)
+                              : '0';
+                          
+                          return CartItemCard(
+                            imageUrl: product.imageUrl,
+                            title: product.name,
+                            quantity: product.quantity,
+                            currentPrice: product.formattedCurrentPrice,
+                            originalPrice: product.formattedOriginalPrice,
+                            discountBadge: discountPercent != '0' ? '$discountPercent% OFF' : '',
+                            itemQuantity: cartItem.quantity,
+                            onRemove: () {
+                              cartProvider.removeItem(product.id);
+                            },
+                            onDecrease: () {
+                              cartProvider.decreaseQuantity(product.id);
+                            },
+                            onIncrease: () {
+                              cartProvider.increaseQuantity(product.id);
+                            },
+                          );
+                        }).toList(),
+                        const SizedBox(height: AppTheme.spacingM),
+                        // Promo Code Section
+                        PromoCodeInput(
+                          controller: _promoCodeController,
+                          onApply: () {
+                            if (_promoCodeController.text.isNotEmpty) {
+                              cartProvider.applyPromoCode(_promoCodeController.text);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Promo code applied: ${_promoCodeController.text}'),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                        const SizedBox(height: AppTheme.spacingM),
+                        // Order Summary
+                        OrderSummary(
+                          subTotal: '\$${cartProvider.subtotal.toStringAsFixed(2)}',
+                          shipping: '\$${cartProvider.shipping.toStringAsFixed(2)}',
+                          discount: _calculateDiscountPercentage(cartProvider),
+                          totalAmount: '\$${cartProvider.total.toStringAsFixed(2)}',
+                        ),
+                        const SizedBox(height: AppTheme.spacingXL),
+                      ],
                     ),
-                    CartItemCard(
-                      imageUrl: _getImageUrl('Classic Burger'),
-                      title: 'Classic Burger',
-                      quantity: '1 piece',
-                      currentPrice: '\$12',
-                      originalPrice: '\$15',
-                      discountBadge: '35% OFF',
-                      itemQuantity: _burgerQuantity,
-                      onRemove: () {
-                        // Handle remove
-                      },
-                      onDecrease: () {
-                        if (_burgerQuantity > 1) {
-                          setState(() {
-                            _burgerQuantity--;
-                          });
-                        }
-                      },
-                      onIncrease: () {
-                        setState(() {
-                          _burgerQuantity++;
-                        });
-                      },
-                    ),
-                    CartItemCard(
-                      imageUrl: _getImageUrl('Caesar Salad'),
-                      title: 'Caesar Salad',
-                      quantity: '1 serving',
-                      currentPrice: '\$12',
-                      originalPrice: '\$15',
-                      discountBadge: '35% OFF',
-                      itemQuantity: _saladQuantity,
-                      onRemove: () {
-                        // Handle remove
-                      },
-                      onDecrease: () {
-                        if (_saladQuantity > 1) {
-                          setState(() {
-                            _saladQuantity--;
-                          });
-                        }
-                      },
-                      onIncrease: () {
-                        setState(() {
-                          _saladQuantity++;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: AppTheme.spacingM),
-                    // Promo Code Section
-                    PromoCodeInput(
-                      controller: _promoCodeController,
-                      onApply: () {
-                        // Handle apply promo code
-                      },
-                    ),
-                    const SizedBox(height: AppTheme.spacingM),
-                    // Order Summary
-                    OrderSummary(
-                      subTotal: '\$66.00',
-                      shipping: '\$10.00',
-                      discount: '10%',
-                      totalAmount: '\$68.40',
-                    ),
-                    const SizedBox(height: AppTheme.spacingXL),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            // Checkout Button
-            _buildCheckoutButton(),
-          ],
+                // Checkout Button
+                _buildCheckoutButton(cartProvider),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -225,7 +198,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     );
   }
 
-  Widget _buildCheckoutButton() {
+  Widget _buildCheckoutButton(CartProvider cartProvider) {
     return Container(
       padding: const EdgeInsets.all(AppTheme.spacingM),
       decoration: BoxDecoration(
@@ -244,16 +217,19 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
         width: double.infinity,
         height: 56,
         child: ElevatedButton(
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const DeliveryAddressScreen(),
-              ),
-            );
-          },
+          onPressed: cartProvider.items.isEmpty
+              ? null
+              : () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const DeliveryAddressScreen(),
+                    ),
+                  );
+                },
           style: ElevatedButton.styleFrom(
             backgroundColor: ThemeHelper.getPrimaryColor(context),
             foregroundColor: AppColors.textOnPrimary,
+            disabledBackgroundColor: ThemeHelper.getTextSecondaryColor(context),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppTheme.radiusM),
             ),
@@ -268,4 +244,3 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     );
   }
 }
-

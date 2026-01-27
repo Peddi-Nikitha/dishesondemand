@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../providers/auth_provider.dart';
 import '../location/location_access_screen.dart';
 import 'create_account_screen.dart';
+import '../../utils/constants.dart';
+import '../delivery/delivery_home_screen.dart';
 
 /// Sign In screen with form fields and social login
 class SignInScreen extends StatefulWidget {
@@ -249,36 +253,114 @@ class _SignInScreenState extends State<SignInScreen> {
                 ),
                 const SizedBox(height: AppTheme.spacingXL),
                 // Sign In button
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        // Navigate to location access screen
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(
-                            builder: (context) => const LocationAccessScreen(),
+                Consumer<AuthProvider>(
+                  builder: (context, authProvider, _) {
+                    return SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: authProvider.isLoading
+                            ? null
+                            : () async {
+                                if (_formKey.currentState!.validate()) {
+                                  final success = await authProvider.signIn(
+                                    email: _emailController.text.trim(),
+                                    password: _passwordController.text,
+                                  );
+
+                                  if (success && context.mounted) {
+                                    // Wait for user data to load (role determination happens in _loadUserData)
+                                    // The authStateChanges listener will trigger _loadUserData
+                                    // We need to wait for the role to be determined
+                                    int retryCount = 0;
+                                    String? role;
+                                    
+                                    while (retryCount < 10 && context.mounted) {
+                                      await Future.delayed(const Duration(milliseconds: 300));
+                                      role = authProvider.userRole;
+                                      
+                                      if (role != null) {
+                                        break;
+                                      }
+                                      retryCount++;
+                                    }
+                                    
+                                    if (!context.mounted) return;
+                                    
+                                    // Navigate based on user role
+                                    if (role == AppConstants.roleUser) {
+                                      Navigator.of(context).pushReplacement(
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              const LocationAccessScreen(),
+                                        ),
+                                      );
+                                    } else if (role == AppConstants.roleAdmin) {
+                                      // Navigate to admin dashboard
+                                      // TODO: Import and navigate to admin dashboard
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Admin dashboard coming soon'),
+                                        ),
+                                      );
+                                    } else if (role == AppConstants.roleDeliveryBoy) {
+                                      // Navigate to delivery home
+                                      Navigator.of(context).pushReplacement(
+                                        MaterialPageRoute(
+                                          builder: (context) => const DeliveryHomeScreen(),
+                                        ),
+                                      );
+                                    } else {
+                                      // Role still not determined - show error
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Unable to determine user role. Please try again.'),
+                                            backgroundColor: AppColors.error,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } else if (context.mounted && authProvider.error != null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(authProvider.error!),
+                                        backgroundColor: AppColors.error,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ThemeHelper.getPrimaryColor(context),
+                          foregroundColor: AppColors.textOnPrimary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppTheme.radiusM),
                           ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: ThemeHelper.getPrimaryColor(context),
-                      foregroundColor: AppColors.textOnPrimary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                          elevation: 0,
+                          disabledBackgroundColor:
+                              ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.6),
+                        ),
+                        child: authProvider.isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      AppColors.textOnPrimary),
+                                ),
+                              )
+                            : Text(
+                                'Sign In',
+                                style: AppTextStyles.buttonLarge.copyWith(
+                                  color: AppColors.textOnPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      'Sign In',
-                      style: AppTextStyles.buttonLarge.copyWith(
-                        color: AppColors.textOnPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
                 const SizedBox(height: AppTheme.spacingXL),
                 // Or sign in with

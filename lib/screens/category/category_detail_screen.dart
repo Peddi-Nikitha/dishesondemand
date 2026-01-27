@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
 import '../../widgets/grid_product_card.dart';
-import '../../models/menu_item.dart';
+import '../../models/product_model.dart';
+import '../../providers/product_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/cart_provider.dart';
 import '../product/product_detail_screen.dart';
 
 /// Category detail screen showing all items in a specific category
@@ -23,40 +27,21 @@ class CategoryDetailScreen extends StatefulWidget {
 }
 
 class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
-  final Map<String, bool> _favorites = {};
-
-  List<MenuItem> get _items => MenuData.getItemsByCategory(widget.categoryName);
-
-  bool _isFavorite(String itemId) => _favorites[itemId] ?? false;
-
-  void _toggleFavorite(String itemId) {
-    setState(() {
-      _favorites[itemId] = !(_favorites[itemId] ?? false);
+  @override
+  void initState() {
+    super.initState();
+    // Load products for this category
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final productProvider = Provider.of<ProductProvider>(context, listen: false);
+      productProvider.loadProductsByCategory(widget.categoryName);
     });
   }
 
-  void _onAddToCart(MenuItem item) {
-    // Handle add to cart
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${item.name} added to cart'),
-        duration: const Duration(seconds: 1),
-        backgroundColor: AppColors.primary,
-      ),
-    );
-  }
-
-  void _onItemTap(MenuItem item) {
+  void _onItemTap(ProductModel product) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ProductDetailScreen(
-          productName: item.name,
-          category: item.category,
-          imageUrl: item.imageUrl,
-          price: item.formattedCurrentPrice,
-          rating: item.rating,
-          quantity: item.quantity,
-          description: item.description,
+          productId: product.id,
         ),
       ),
     );
@@ -120,8 +105,39 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
             const SizedBox(height: AppTheme.spacingS),
             // Product grid
             Expanded(
-              child: _items.isEmpty
-                  ? Center(
+              child: Consumer2<ProductProvider, AuthProvider>(
+                builder: (context, productProvider, authProvider, child) {
+                  if (productProvider.isLoading && productProvider.products.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (productProvider.error != null && productProvider.products.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: 64,
+                            color: AppColors.error,
+                          ),
+                          const SizedBox(height: AppTheme.spacingM),
+                          Text(
+                            productProvider.error!,
+                            style: AppTextStyles.bodyLarge.copyWith(
+                              color: AppColors.error,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final products = productProvider.products;
+
+                  if (products.isEmpty) {
+                    return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -139,36 +155,65 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                           ),
                         ],
                       ),
-                    )
-                  : GridView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppTheme.spacingM,
-                        vertical: AppTheme.spacingS,
-                      ),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        childAspectRatio: 0.75,
-                        crossAxisSpacing: AppTheme.spacingM,
-                        mainAxisSpacing: AppTheme.spacingM,
-                      ),
-                      itemCount: _items.length,
-                      itemBuilder: (context, index) {
-                        final item = _items[index];
-                        return GridProductCard(
-                          imageUrl: item.imageUrl,
-                          title: item.name,
-                          quantity: item.quantity,
-                          currentPrice: item.formattedCurrentPrice,
-                          originalPrice: item.originalPrice != null
-                              ? item.formattedOriginalPrice
-                              : null,
-                          isFavorite: _isFavorite(item.id),
-                          onFavoriteTap: () => _toggleFavorite(item.id),
-                          onAddTap: () => _onAddToCart(item),
-                          onTap: () => _onItemTap(item),
-                        );
-                      },
+                    );
+                  }
+
+                  return GridView.builder(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTheme.spacingM,
+                      vertical: AppTheme.spacingS,
                     ),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.75,
+                      crossAxisSpacing: AppTheme.spacingM,
+                      mainAxisSpacing: AppTheme.spacingM,
+                    ),
+                    itemCount: products.length,
+                    itemBuilder: (context, index) {
+                      final product = products[index];
+                      final isFavorite = authProvider.isFavorite(product.id);
+                      return GridProductCard(
+                        imageUrl: product.imageUrl,
+                        title: product.name,
+                        quantity: product.quantity,
+                        currentPrice: product.formattedCurrentPrice,
+                        originalPrice: product.originalPrice != null
+                            ? product.formattedOriginalPrice
+                            : null,
+                        isFavorite: isFavorite,
+                        onFavoriteTap: () async {
+                          final success = await authProvider.toggleFavorite(product.id);
+                          if (success && mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  isFavorite
+                                      ? '${product.name} removed from favorites'
+                                      : '${product.name} added to favorites',
+                                ),
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        },
+                        onAddTap: () {
+                          final cartProvider = Provider.of<CartProvider>(context, listen: false);
+                          cartProvider.addItem(product);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('${product.name} added to cart'),
+                              duration: const Duration(seconds: 1),
+                              backgroundColor: AppColors.primary,
+                            ),
+                          );
+                        },
+                        onTap: () => _onItemTap(product),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ],
         ),

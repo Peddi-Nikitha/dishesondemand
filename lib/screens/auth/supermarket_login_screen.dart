@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../providers/auth_provider.dart';
 import '../supermarket/supermarket_dashboard_screen.dart';
+import '../../utils/constants.dart';
 
 /// Supermarket Dashboard (POS System) Login Screen
 /// Matches the design with orange theme instead of green
@@ -440,14 +443,40 @@ class _SupermarketLoginScreenState extends State<SupermarketLoginScreen> {
       width: double.infinity,
       height: 56,
       child: ElevatedButton(
-        onPressed: () {
+        onPressed: () async {
           if (_formKey.currentState!.validate()) {
-            // Navigate to dashboard
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => const SupermarketDashboardScreen(),
-              ),
+            final authProvider = Provider.of<AuthProvider>(context, listen: false);
+            final success = await authProvider.signIn(
+              email: _usernameController.text.trim(),
+              password: _passwordController.text,
             );
+
+            if (success && context.mounted) {
+              // Verify admin role
+              final role = authProvider.userRole;
+              if (role == AppConstants.roleAdmin) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (context) => const SupermarketDashboardScreen(),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Access denied. Admin credentials required.'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+                await authProvider.signOut();
+              }
+            } else if (context.mounted && authProvider.error != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(authProvider.error!),
+                  backgroundColor: AppColors.error,
+                ),
+              );
+            }
           }
         },
         style: ElevatedButton.styleFrom(

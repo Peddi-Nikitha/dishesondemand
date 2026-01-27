@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../providers/user_provider.dart';
+import '../../models/user_model.dart';
+import 'customer_details_screen.dart';
 import 'supermarket_dashboard_screen.dart';
 import 'order_history_screen.dart';
 import 'settings_screen.dart';
@@ -21,57 +25,21 @@ class _CustomersScreenState extends State<CustomersScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedNavItem = 'Customers';
 
-  // Customer data matching the screenshot
-  final List<Map<String, dynamic>> _customers = [
-    {
-      'name': 'Younes Ashour',
-      'id': '#54222',
-      'email': 'foxf.com@gmail.com',
-      'phone': '+2 01090229396',
-      'date': '20/04/2025',
-      'image': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop',
-    },
-    {
-      'name': 'Ahmad',
-      'id': '#54223',
-      'email': 'foxf.com@gmail.com',
-      'phone': '+2 01090229396',
-      'date': '20/04/2025',
-      'image': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop',
-    },
-    {
-      'name': 'Tarek',
-      'id': '#54224',
-      'email': 'foxf.com@gmail.com',
-      'phone': '+2 01090229396',
-      'date': '20/04/2025',
-      'image': 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&h=200&fit=crop',
-    },
-    {
-      'name': 'Waled',
-      'id': '#54225',
-      'email': 'foxf.com@gmail.com',
-      'phone': '+2 01090229396',
-      'date': '20/04/2025',
-      'image': 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&h=200&fit=crop',
-    },
-    {
-      'name': 'Mohamed',
-      'id': '#54226',
-      'email': 'foxf.com@gmail.com',
-      'phone': '+2 01090229396',
-      'date': '20/04/2025',
-      'image': 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&h=200&fit=crop',
-    },
-    {
-      'name': 'Eyad',
-      'id': '#54226',
-      'email': 'foxf.com@gmail.com',
-      'phone': '+2 01090229396',
-      'date': '20/04/2025',
-      'image': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // Load users from Firestore
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      userProvider.loadAllUsers();
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _openDrawer() {
     _scaffoldKey.currentState?.openDrawer();
@@ -103,12 +71,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
         ),
       );
     }
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   @override
@@ -375,6 +337,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
               style: AppTextStyles.bodyMedium.copyWith(
                 color: Colors.white,
               ),
+              onChanged: (value) {
+                final userProvider = Provider.of<UserProvider>(context, listen: false);
+                userProvider.setSearchQuery(value);
+              },
               decoration: InputDecoration(
                 hintText: 'Search Customers.....',
                 hintStyle: AppTextStyles.bodyMedium.copyWith(
@@ -403,91 +369,170 @@ class _CustomersScreenState extends State<CustomersScreen> {
           ),
           const SizedBox(height: AppTheme.spacingM),
           // Customer List
-          ..._customers.map((customer) => _buildCustomerCard(customer)),
+          Consumer<UserProvider>(
+            builder: (context, userProvider, _) {
+              if (userProvider.isLoading) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(AppTheme.spacingXL),
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                );
+              }
+
+              if (userProvider.error != null) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppTheme.spacingXL),
+                    child: Column(
+                      children: [
+                        Text(
+                          userProvider.error!,
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: AppTheme.spacingM),
+                        ElevatedButton(
+                          onPressed: () {
+                            userProvider.loadAllUsers();
+                          },
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final customers = userProvider.users;
+              if (customers.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppTheme.spacingXL),
+                    child: Text(
+                      'No customers found',
+                      style: AppTextStyles.bodyLarge.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              return Column(
+                children: customers.map((customer) => _buildCustomerCard(customer)).toList(),
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildCustomerCard(Map<String, dynamic> customer) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppTheme.spacingM),
-      padding: const EdgeInsets.all(AppTheme.spacingM),
-      decoration: BoxDecoration(
-        color: ThemeHelper.isDarkMode(context)
-            ? AppColors.darkSurface
-            : const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(AppTheme.radiusL),
-      ),
-      child: Row(
-        children: [
-          // Profile Picture
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppTheme.radiusM),
-            child: Image.network(
-              customer['image'] as String,
-              width: 60,
-              height: 60,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 60,
-                  height: 60,
-                  color: Colors.grey[800],
-                  child: Icon(
-                    Icons.person,
-                    color: Colors.grey[600],
-                    size: 30,
-                  ),
-                );
-              },
-            ),
+  Widget _buildCustomerCard(UserModel customer) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => CustomerDetailsScreen(customer: customer),
           ),
-          const SizedBox(width: AppTheme.spacingM),
-          // Customer Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  customer['name'] as String,
-                  style: AppTextStyles.titleMedium.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  customer['id'] as String,
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: Colors.grey[400],
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  customer['email'] as String,
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: Colors.grey[400],
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  customer['phone'] as String,
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: Colors.grey[400],
-                  ),
-                ),
-              ],
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppTheme.spacingM),
+        padding: const EdgeInsets.all(AppTheme.spacingM),
+        decoration: BoxDecoration(
+          color: ThemeHelper.isDarkMode(context)
+              ? AppColors.darkSurface
+              : const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        ),
+        child: Row(
+          children: [
+            // Profile Picture
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.radiusM),
+              child: customer.photoUrl != null && customer.photoUrl!.isNotEmpty
+                  ? Image.network(
+                      customer.photoUrl!,
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 60,
+                          height: 60,
+                          color: Colors.grey[800],
+                          child: Icon(
+                            Icons.person,
+                            color: Colors.grey[600],
+                            size: 30,
+                          ),
+                        );
+                      },
+                    )
+                  : Container(
+                      width: 60,
+                      height: 60,
+                      color: Colors.grey[800],
+                      child: Icon(
+                        Icons.person,
+                        color: Colors.grey[600],
+                        size: 30,
+                      ),
+                    ),
             ),
-          ),
-          // Date
-          Text(
-            customer['date'] as String,
-            style: AppTextStyles.bodySmall.copyWith(
-              color: Colors.grey[400],
+            const SizedBox(width: AppTheme.spacingM),
+            // Customer Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    customer.name ?? 'No Name',
+                    style: AppTextStyles.titleMedium.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '#${customer.uid.substring(0, 6)}',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: Colors.grey[400],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    customer.email,
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: Colors.grey[400],
+                    ),
+                  ),
+                  if (customer.phone != null && customer.phone!.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      customer.phone!,
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: Colors.grey[400],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
-        ],
+            // Date
+            Text(
+              '${customer.createdAt.day}/${customer.createdAt.month}/${customer.createdAt.year}',
+              style: AppTextStyles.bodySmall.copyWith(
+                color: Colors.grey[400],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

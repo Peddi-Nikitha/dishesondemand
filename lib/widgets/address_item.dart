@@ -10,6 +10,8 @@ class AddressItem extends StatelessWidget {
   final String address;
   final bool isSelected;
   final VoidCallback? onTap;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   const AddressItem({
     super.key,
@@ -17,6 +19,8 @@ class AddressItem extends StatelessWidget {
     required this.address,
     this.isSelected = false,
     this.onTap,
+    this.onEdit,
+    this.onDelete,
   });
 
   @override
@@ -66,28 +70,99 @@ class AddressItem extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppTheme.spacingM),
-          // Selection Indicator
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: isSelected ? AppColors.primary : Colors.transparent,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected
-                    ? AppColors.primary
-                    : ThemeHelper.getBorderColor(context),
-                width: 2,
+          // Action Buttons
+          if (onEdit != null || onDelete != null)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (onEdit != null)
+                  GestureDetector(
+                    onTap: () {
+                      onEdit?.call();
+                    },
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: ThemeHelper.getSurfaceColor(context),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        size: 16,
+                        color: ThemeHelper.getTextPrimaryColor(context),
+                      ),
+                    ),
+                  ),
+                if (onEdit != null && onDelete != null)
+                  const SizedBox(width: AppTheme.spacingS),
+                if (onDelete != null)
+                  GestureDetector(
+                    onTap: () {
+                      onDelete?.call();
+                    },
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: ThemeHelper.getSurfaceColor(context),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.delete_outline,
+                        size: 16,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: AppTheme.spacingS),
+                // Selection Indicator
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.primary : Colors.transparent,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected
+                          ? AppColors.primary
+                          : ThemeHelper.getBorderColor(context),
+                      width: 2,
+                    ),
+                  ),
+                  child: isSelected
+                      ? const Icon(
+                          Icons.check,
+                          color: AppColors.textOnPrimary,
+                          size: 16,
+                        )
+                      : null,
+                ),
+              ],
+            )
+          else
+            // Selection Indicator only
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.primary : Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected
+                      ? AppColors.primary
+                      : ThemeHelper.getBorderColor(context),
+                  width: 2,
+                ),
               ),
+              child: isSelected
+                  ? const Icon(
+                      Icons.check,
+                      color: AppColors.textOnPrimary,
+                      size: 16,
+                    )
+                  : null,
             ),
-            child: isSelected
-                ? const Icon(
-                    Icons.check,
-                    color: AppColors.textOnPrimary,
-                    size: 16,
-                  )
-                : null,
-          ),
         ],
       ),
     );

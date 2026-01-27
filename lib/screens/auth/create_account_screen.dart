@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../providers/auth_provider.dart';
 import '../profile/complete_profile_screen.dart';
 import 'sign_in_screen.dart';
+import '../../utils/constants.dart';
 
 /// Create Account screen with form fields and social login
 class CreateAccountScreen extends StatefulWidget {
@@ -197,8 +200,12 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your email';
                     }
-                    if (!value.contains('@')) {
-                      return 'Please enter a valid email';
+                    // Better email validation
+                    final emailRegex = RegExp(
+                      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+                    );
+                    if (!emailRegex.hasMatch(value.trim())) {
+                      return 'Please enter a valid email address';
                     }
                     return null;
                   },
@@ -329,37 +336,73 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                 ),
                 const SizedBox(height: AppTheme.spacingXL),
                 // Sign Up button
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _agreeToTerms
-                        ? () {
-                            if (_formKey.currentState!.validate()) {
-                              // Navigate to complete profile screen
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      const CompleteProfileScreen(),
+                Consumer<AuthProvider>(
+                  builder: (context, authProvider, _) {
+                    return SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: (_agreeToTerms && !authProvider.isLoading)
+                            ? () async {
+                                if (_formKey.currentState!.validate()) {
+                                  final success = await authProvider.createAccount(
+                                    email: _emailController.text.trim(),
+                                    password: _passwordController.text,
+                                    role: AppConstants.roleUser,
+                                    name: _nameController.text.trim(),
+                                  );
+
+                                  if (success && context.mounted) {
+                                    // Navigate to complete profile screen
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const CompleteProfileScreen(),
+                                      ),
+                                    );
+                                  } else if (context.mounted) {
+                                    // Show error message
+                                    final errorMessage = authProvider.error ?? 
+                                        'Failed to create account. Please try again.';
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(errorMessage),
+                                        backgroundColor: AppColors.error,
+                                        duration: const Duration(seconds: 4),
+                                      ),
+                                    );
+                                    // Clear error after showing
+                                    authProvider.clearError();
+                                  }
+                                }
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ThemeHelper.getPrimaryColor(context),
+                          foregroundColor: AppColors.textOnPrimary,
+                          disabledBackgroundColor: AppColors.divider,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: authProvider.isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      AppColors.textOnPrimary),
                                 ),
-                              );
-                            }
-                          }
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: ThemeHelper.getPrimaryColor(context),
-                      foregroundColor: AppColors.textOnPrimary,
-                      disabledBackgroundColor: AppColors.divider,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                              )
+                            : Text(
+                                'Sign Up',
+                                style: AppTextStyles.buttonLarge,
+                              ),
                       ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      'Sign Up',
-                      style: AppTextStyles.buttonLarge,
-                    ),
-                  ),
+                    );
+                  },
                 ),
                 const SizedBox(height: AppTheme.spacingXL),
                 // Or sign up with

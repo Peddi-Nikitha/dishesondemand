@@ -9,6 +9,7 @@ class NotificationItem extends StatelessWidget {
   final String title;
   final String description;
   final String timeAgo;
+  final bool isRead;
   final VoidCallback? onTap;
 
   const NotificationItem({
@@ -17,6 +18,7 @@ class NotificationItem extends StatelessWidget {
     required this.title,
     required this.description,
     required this.timeAgo,
+    this.isRead = false,
     this.onTap,
   });
 
@@ -28,10 +30,14 @@ class NotificationItem extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: AppTheme.spacingM),
         padding: const EdgeInsets.all(AppTheme.spacingM),
         decoration: BoxDecoration(
-          color: ThemeHelper.getSurfaceColor(context),
+          color: isRead
+              ? ThemeHelper.getSurfaceColor(context)
+              : ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(AppTheme.radiusL),
           border: Border.all(
-            color: ThemeHelper.getBorderColor(context),
+            color: isRead
+                ? ThemeHelper.getBorderColor(context)
+                : ThemeHelper.getPrimaryColor(context),
             width: 1,
           ),
         ),
@@ -67,7 +73,8 @@ class NotificationItem extends StatelessWidget {
                           title,
                           style: AppTextStyles.titleMedium.copyWith(
                             color: ThemeHelper.getTextPrimaryColor(context),
-                            fontWeight: FontWeight.bold,
+                            fontWeight:
+                                isRead ? FontWeight.w500 : FontWeight.bold,
                           ),
                         ),
                       ),

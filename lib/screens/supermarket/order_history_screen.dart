@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../utils/constants.dart';
+import '../../providers/order_provider.dart';
+import '../../providers/delivery_boy_provider.dart';
+import '../../models/order_model.dart';
+import '../../models/delivery_boy_model.dart';
 import 'supermarket_dashboard_screen.dart';
 import 'customers_screen.dart';
 import 'settings_screen.dart';
@@ -24,49 +30,22 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   final List<String> _tabs = ['Order History', 'Order On Hold', 'Offline Order'];
 
-  // Order data matching the screenshot
-  final List<Map<String, dynamic>> _orders = [
-    {
-      'orderId': '#458719',
-      'date': '26/1 3:02 PM',
-      'total': 345.29,
-    },
-    {
-      'orderId': '#458719',
-      'date': '26/1 3:03 PM',
-      'total': 345.29,
-    },
-    {
-      'orderId': '#458719',
-      'date': '26/1 3:03 PM',
-      'total': 345.29,
-    },
-    {
-      'orderId': '#458719',
-      'date': '26/1 3:03 PM',
-      'total': 345.29,
-    },
-    {
-      'orderId': '#458719',
-      'date': '26/1 3:03 PM',
-      'total': 345.29,
-    },
-    {
-      'orderId': '#458719',
-      'date': '26/1 3:03 PM',
-      'total': 345.29,
-    },
-    {
-      'orderId': '#458719',
-      'date': '26/1 3:03 PM',
-      'total': 345.29,
-    },
-    {
-      'orderId': '#458719',
-      'date': '26/1 3:03 PM',
-      'total': 345.25,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // Load orders from Firestore
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      orderProvider.loadAllOrders();
+      orderProvider.setSelectedTab(_tabs[_selectedTabIndex]);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _openDrawer() {
     _scaffoldKey.currentState?.openDrawer();
@@ -98,12 +77,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         ),
       );
     }
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   @override
@@ -362,6 +335,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                         setState(() {
                           _selectedTabIndex = index;
                         });
+                        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+                        orderProvider.setSelectedTab(_tabs[index]);
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -407,6 +382,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               style: AppTextStyles.bodyMedium.copyWith(
                 color: Colors.white,
               ),
+              onChanged: (value) {
+                final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+                orderProvider.setSearchQuery(value);
+              },
               decoration: InputDecoration(
                 hintText: 'Search Order Id or Customers.',
                 hintStyle: AppTextStyles.bodyMedium.copyWith(
@@ -477,13 +456,74 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
           ),
           const SizedBox(height: AppTheme.spacingS),
           // Order List
-          ..._orders.map((order) => _buildOrderRow(order)),
+          Consumer<OrderProvider>(
+            builder: (context, orderProvider, _) {
+              if (orderProvider.isLoading) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(AppTheme.spacingXL),
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                );
+              }
+
+              if (orderProvider.error != null) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppTheme.spacingXL),
+                    child: Column(
+                      children: [
+                        Text(
+                          orderProvider.error!,
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: AppTheme.spacingM),
+                        ElevatedButton(
+                          onPressed: () {
+                            orderProvider.loadAllOrders();
+                          },
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final orders = orderProvider.orders;
+              if (orders.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppTheme.spacingXL),
+                    child: Text(
+                      'No orders found',
+                      style: AppTextStyles.bodyLarge.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              return Column(
+                children: orders.map((order) => _buildOrderRow(order)).toList(),
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildOrderRow(Map<String, dynamic> order) {
+  Widget _buildOrderRow(OrderModel order) {
+    final bool isDelivered = order.status == AppConstants.orderStatusDelivered;
+    final bool isCancelled = order.status == AppConstants.orderStatusCancelled;
+    final bool canAssign = !isDelivered && !isCancelled;
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppTheme.spacingS),
       padding: const EdgeInsets.symmetric(
@@ -501,7 +541,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
           Expanded(
             flex: 2,
             child: Text(
-              order['orderId'] as String,
+              order.orderNumber,
               style: AppTextStyles.bodyMedium.copyWith(
                 color: Colors.white,
               ),
@@ -510,7 +550,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
           Expanded(
             flex: 2,
             child: Text(
-              order['date'] as String,
+              '${order.createdAt.day}/${order.createdAt.month} ${order.createdAt.hour}:${order.createdAt.minute.toString().padLeft(2, '0')} ${order.createdAt.hour >= 12 ? 'PM' : 'AM'}',
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium.copyWith(
                 color: Colors.white,
@@ -519,17 +559,150 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
           ),
           Expanded(
             flex: 2,
-            child: Text(
-              '\$${order['total'].toStringAsFixed(2)}',
-              textAlign: TextAlign.right,
-              style: AppTextStyles.bodyMedium.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '\$${order.total.toStringAsFixed(2)}',
+                  textAlign: TextAlign.right,
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  order.deliveryBoyId != null
+                      ? 'Assigned'
+                      : 'Unassigned',
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: order.deliveryBoyId != null
+                        ? AppColors.success
+                        : AppColors.warning,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 32,
+                  child: OutlinedButton(
+                    onPressed: canAssign
+                        ? () => _showAssignDeliveryDialog(order)
+                        : null,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textOnPrimary,
+                      side: const BorderSide(color: AppColors.primary),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                      ),
+                      textStyle: AppTextStyles.bodySmall.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    child: Text(
+                      order.deliveryBoyId != null ? 'Reassign' : 'Assign',
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _showAssignDeliveryDialog(OrderModel order) async {
+    final deliveryBoyProvider =
+        Provider.of<DeliveryBoyProvider>(context, listen: false);
+    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+
+    // Load all delivery boys
+    await deliveryBoyProvider.loadDeliveryBoys();
+
+    if (!mounted) return;
+
+    String? selectedDeliveryBoyId = order.deliveryBoyId;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setState) {
+            // Use all delivery boys (regardless of status)
+            final List<DeliveryBoyModel> deliveryBoys =
+                List<DeliveryBoyModel>.from(deliveryBoyProvider.deliveryBoys);
+
+            return AlertDialog(
+              backgroundColor: ThemeHelper.isDarkMode(context)
+                  ? AppColors.darkSurface
+                  : Colors.white,
+              title: const Text('Assign Delivery Boy'),
+              content: deliveryBoyProvider.isLoading
+                  ? const SizedBox(
+                      height: 80,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : deliveryBoys.isEmpty
+                      ? const Text(
+                          'No active delivery boys available.',
+                        )
+                      : DropdownButtonFormField<String>(
+                          value: selectedDeliveryBoyId,
+                          decoration: const InputDecoration(
+                            labelText: 'Select Delivery Boy',
+                          ),
+                          items: deliveryBoys.map((db) {
+                            return DropdownMenuItem<String>(
+                              value: db.uid,
+                              child: Text(db.name ?? db.email),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              selectedDeliveryBoyId = value;
+                            });
+                          },
+                        ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: (selectedDeliveryBoyId == null ||
+                          deliveryBoyProvider.isLoading)
+                      ? null
+                      : () async {
+                          final success = await orderProvider.assignDeliveryBoy(
+                            order.id,
+                            selectedDeliveryBoyId!,
+                          );
+                          if (!mounted) return;
+
+                          Navigator.of(dialogContext).pop();
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                success
+                                    ? 'Order assigned successfully'
+                                    : orderProvider.error ??
+                                        'Failed to assign order',
+                              ),
+                              backgroundColor: success
+                                  ? AppColors.success
+                                  : AppColors.error,
+                            ),
+                          );
+                        },
+                  child: const Text('Assign'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

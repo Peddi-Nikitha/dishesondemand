@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../providers/auth_provider.dart';
 import 'driver_requirements_screen.dart';
 import '../auth/sign_in_screen.dart';
+import '../../utils/constants.dart';
 
 /// Delivery Create Account screen matching the exact design from screenshot
 class DeliveryCreateAccountScreen extends StatefulWidget {
@@ -330,36 +333,68 @@ class _DeliveryCreateAccountScreenState extends State<DeliveryCreateAccountScree
                 ),
                 const SizedBox(height: AppTheme.spacingXL),
                 // Sign Up button
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _agreeToTerms
-                        ? () {
-                            if (_formKey.currentState!.validate()) {
-                              // Navigate to driver requirements screen
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => const DriverRequirementsScreen(),
+                Consumer<AuthProvider>(
+                  builder: (context, authProvider, _) {
+                    return SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: (_agreeToTerms && !authProvider.isLoading)
+                            ? () async {
+                                if (_formKey.currentState!.validate()) {
+                                  final success = await authProvider.createAccount(
+                                    email: _emailController.text.trim(),
+                                    password: _passwordController.text,
+                                    role: AppConstants.roleDeliveryBoy,
+                                    name: _nameController.text.trim(),
+                                  );
+
+                                  if (success && context.mounted) {
+                                    // Navigate to driver requirements screen
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const DriverRequirementsScreen(),
+                                      ),
+                                    );
+                                  } else if (context.mounted &&
+                                      authProvider.error != null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(authProvider.error!),
+                                        backgroundColor: AppColors.error,
+                                      ),
+                                    );
+                                  }
+                                }
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ThemeHelper.getPrimaryColor(context),
+                          foregroundColor: AppColors.textOnPrimary,
+                          disabledBackgroundColor: AppColors.divider,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: authProvider.isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      AppColors.textOnPrimary),
                                 ),
-                              );
-                            }
-                          }
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: ThemeHelper.getPrimaryColor(context),
-                      foregroundColor: AppColors.textOnPrimary,
-                      disabledBackgroundColor: AppColors.divider,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                              )
+                            : Text(
+                                'Sign Up',
+                                style: AppTextStyles.buttonLarge,
+                              ),
                       ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      'Sign Up',
-                      style: AppTextStyles.buttonLarge,
-                    ),
-                  ),
+                    );
+                  },
                 ),
                 const SizedBox(height: AppTheme.spacingXL),
                 // Or sign up with

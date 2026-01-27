@@ -1,18 +1,55 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../utils/constants.dart';
 import '../../widgets/celebration_graphic.dart';
 import '../../widgets/delivery_details_card.dart';
+import '../../providers/order_provider.dart';
+import '../../models/order_model.dart';
 import 'delivery_home_screen.dart';
 
 /// Delivery completion screen shown after successful delivery
+/// Now displays real order data from Firestore
 class DeliveryCompletionScreen extends StatelessWidget {
-  const DeliveryCompletionScreen({super.key});
+  final OrderModel order;
+
+  const DeliveryCompletionScreen({super.key, required this.order});
 
   @override
   Widget build(BuildContext context) {
+    String _formatAddress() {
+      final addr = order.deliveryAddress;
+      return '${addr.street}, ${addr.city}, ${addr.state}, ${addr.zipCode}';
+    }
+
+    String _statusLabel(String status) {
+      switch (status) {
+        case AppConstants.orderStatusPending:
+          return 'Pending';
+        case AppConstants.orderStatusConfirmed:
+          return 'Confirmed';
+        case AppConstants.orderStatusPreparing:
+          return 'Preparing';
+        case AppConstants.orderStatusReady:
+          return 'Ready';
+        case AppConstants.orderStatusAssigned:
+          return 'Assigned';
+        case AppConstants.orderStatusPickedUp:
+          return 'Picked Up';
+        case AppConstants.orderStatusInTransit:
+          return 'In Transit';
+        case AppConstants.orderStatusDelivered:
+          return 'Delivered';
+        case AppConstants.orderStatusCancelled:
+          return 'Cancelled';
+        default:
+          return status;
+      }
+    }
+
     return Scaffold(
       backgroundColor: ThemeHelper.getBackgroundColor(context),
       body: SafeArea(
@@ -53,20 +90,48 @@ class DeliveryCompletionScreen extends StatelessWidget {
               const SizedBox(height: AppTheme.spacingXL),
               // Delivery details card
               DeliveryDetailsCard(
-                trackingId: 'REG10123637',
-                receiverName: 'Mo Tarek',
-                pickupAddress: 'Agric, IKD. Lag.',
-                deliveryAddress: 'Phase 1. Lekki. Lag.',
-                status: 'Transit',
-                weight: '4 Kg',
+                trackingId: order.orderNumber,
+                receiverName: 'Customer', // Could be enhanced with user data
+                pickupAddress: 'Restaurant', // Placeholder until restaurant address is stored
+                deliveryAddress: _formatAddress(),
+                status: _statusLabel(order.status),
+                weight: '${order.items.length} items',
               ),
               const SizedBox(height: AppTheme.spacingXL),
-              // Go back Home button
+              // Go back Home button (also marks order as delivered)
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
+                    final orderProvider =
+                        Provider.of<OrderProvider>(context, listen: false);
+
+                    // If not already delivered, update status
+                    if (order.status != AppConstants.orderStatusDelivered) {
+                      final success = await orderProvider.updateOrderStatus(
+                        order.id,
+                        AppConstants.orderStatusDelivered,
+                      );
+
+                      if (!context.mounted) return;
+
+                      if (!success) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              orderProvider.error ??
+                                  'Failed to update order status',
+                            ),
+                            backgroundColor: AppColors.error,
+                          ),
+                        );
+                        return;
+                      }
+                    }
+
+                    if (!context.mounted) return;
+
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(
                         builder: (context) => const DeliveryHomeScreen(),

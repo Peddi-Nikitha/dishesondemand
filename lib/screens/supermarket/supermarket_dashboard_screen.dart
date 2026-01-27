@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../providers/product_provider.dart';
+import '../../providers/category_provider.dart';
+import '../../models/product_model.dart';
 import 'customers_screen.dart';
 import 'order_history_screen.dart';
 import 'settings_screen.dart';
+import 'add_edit_product_screen.dart';
 
 /// Supermarket Dashboard (POS System) Screen
 /// Matches the design with orange theme instead of green
@@ -21,258 +26,31 @@ class _SupermarketDashboardScreenState extends State<SupermarketDashboardScreen>
   int _selectedCategoryIndex = 0;
   String _selectedNavItem = 'Home';
 
-  final List<String> _categories = ['Starters', 'Breakfast', 'Lunch', 'Supp', 'Desserts', 'Beverages'];
+  List<CategoryModel> _categories = [];
 
-  // Product data organized by category
-  final Map<String, List<Map<String, dynamic>>> _productsByCategory = {
-    'Starters': [
-      {
-        'name': 'Schezwan Egg',
-        'price': 24.00,
-        'image': 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Spring Rolls',
-        'price': 12.00,
-        'image': 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Chicken Wings',
-        'price': 18.00,
-        'image': 'https://images.unsplash.com/photo-1527477396000-e27137b2a8c3?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Bruschetta',
-        'price': 10.00,
-        'image': 'https://images.unsplash.com/photo-1572441713132-51c75654db73?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Mozzarella Sticks',
-        'price': 14.00,
-        'image': 'https://images.unsplash.com/photo-1527477396000-e27137b2a8c3?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Onion Rings',
-        'price': 9.00,
-        'image': 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=400&h=400&fit=crop',
-      },
-    ],
-    'Breakfast': [
-      {
-        'name': 'Pancakes',
-        'price': 15.00,
-        'image': 'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'French Toast',
-        'price': 14.00,
-        'image': 'https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Eggs Benedict',
-        'price': 18.00,
-        'image': 'https://images.unsplash.com/photo-1588168333986-5078d3ae3976?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Waffles',
-        'price': 16.00,
-        'image': 'https://images.unsplash.com/photo-1562376552-0d160a2f238d?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Omelette',
-        'price': 12.00,
-        'image': 'https://images.unsplash.com/photo-1615367423057-4b9c38e5c724?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Breakfast Burrito',
-        'price': 13.00,
-        'image': 'https://images.unsplash.com/photo-1626700051175-6818013e1d4f?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Avocado Toast',
-        'price': 11.00,
-        'image': 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Breakfast Sandwich',
-        'price': 10.00,
-        'image': 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&h=400&fit=crop',
-      },
-    ],
-    'Lunch': [
-      {
-        'name': 'Caesar Salad',
-        'price': 16.00,
-        'image': 'https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Grilled Chicken',
-        'price': 22.00,
-        'image': 'https://images.unsplash.com/photo-1532550907401-a78c000e25fb?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Beef Burger',
-        'price': 20.00,
-        'image': 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Fish & Chips',
-        'price': 19.00,
-        'image': 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Pasta Carbonara',
-        'price': 18.00,
-        'image': 'https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Club Sandwich',
-        'price': 17.00,
-        'image': 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Chicken Wrap',
-        'price': 15.00,
-        'image': 'https://images.unsplash.com/photo-1626700051175-6818013e1d4f?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Pizza Slice',
-        'price': 14.00,
-        'image': 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&h=400&fit=crop',
-      },
-    ],
-    'Supp': [
-      {
-        'name': 'Steak Dinner',
-        'price': 32.00,
-        'image': 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Salmon Fillet',
-        'price': 28.00,
-        'image': 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Lamb Chops',
-        'price': 30.00,
-        'image': 'https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Ribeye Steak',
-        'price': 35.00,
-        'image': 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Grilled Fish',
-        'price': 26.00,
-        'image': 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Pork Tenderloin',
-        'price': 27.00,
-        'image': 'https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Chicken Breast',
-        'price': 24.00,
-        'image': 'https://images.unsplash.com/photo-1532550907401-a78c000e25fb?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Beef Tenderloin',
-        'price': 33.00,
-        'image': 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=400&h=400&fit=crop',
-      },
-    ],
-    'Desserts': [
-      {
-        'name': 'Chocolate Cake',
-        'price': 12.00,
-        'image': 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Cheesecake',
-        'price': 13.00,
-        'image': 'https://images.unsplash.com/photo-1524351199676-942e0d5d8ff3?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Ice Cream',
-        'price': 8.00,
-        'image': 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Tiramisu',
-        'price': 14.00,
-        'image': 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Brownie',
-        'price': 10.00,
-        'image': 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Apple Pie',
-        'price': 11.00,
-        'image': 'https://images.unsplash.com/photo-1621303837174-89787a7d4729?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Creme Brulee',
-        'price': 12.00,
-        'image': 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Chocolate Mousse',
-        'price': 11.00,
-        'image': 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=400&h=400&fit=crop',
-      },
-    ],
-    'Beverages': [
-      {
-        'name': 'Fresh Orange Juice',
-        'price': 6.00,
-        'image': 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Coffee',
-        'price': 5.00,
-        'image': 'https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Iced Tea',
-        'price': 4.00,
-        'image': 'https://images.unsplash.com/photo-1556679343-c7306c1976b5?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Smoothie',
-        'price': 7.00,
-        'image': 'https://images.unsplash.com/photo-1505252585461-04c3a695d0a5?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Lemonade',
-        'price': 5.00,
-        'image': 'https://images.unsplash.com/photo-1523677011783-c91d1bbe2fdc?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Coca Cola',
-        'price': 3.00,
-        'image': 'https://images.unsplash.com/photo-1554866585-cd94860890b7?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Milkshake',
-        'price': 8.00,
-        'image': 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=400&h=400&fit=crop',
-      },
-      {
-        'name': 'Fresh Lemonade',
-        'price': 5.00,
-        'image': 'https://images.unsplash.com/photo-1523677011783-c91d1bbe2fdc?w=400&h=400&fit=crop',
-      },
-    ],
-  };
+  @override
+  void initState() {
+    super.initState();
+    // Load categories and products when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
+      categoryProvider.loadAllCategories().then((_) {
+        if (categoryProvider.categories.isNotEmpty) {
+          setState(() {
+            _categories = categoryProvider.categories;
+          });
+          // Load products for the first category
+          final productProvider = Provider.of<ProductProvider>(context, listen: false);
+          productProvider.loadAllProductsByCategory(_categories[_selectedCategoryIndex].name);
+        }
+      });
+    });
+  }
 
-  // Get products for selected category
-  List<Map<String, dynamic>> get _currentProducts {
-    final selectedCategory = _categories[_selectedCategoryIndex];
-    return _productsByCategory[selectedCategory] ?? [];
+  // Get products for selected category from Firestore
+  List<ProductModel> get _currentProducts {
+    final productProvider = Provider.of<ProductProvider>(context, listen: true);
+    return productProvider.products;
   }
 
   void _openDrawer() {
@@ -534,6 +312,24 @@ class _SupermarketDashboardScreenState extends State<SupermarketDashboardScreen>
                   // Handle Wi-Fi
                 },
               ),
+              IconButton(
+                icon: Icon(
+                  Icons.add,
+                  color: Colors.white,
+                ),
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const AddEditProductScreen(),
+                    ),
+                  );
+                  // Refresh products after returning
+                  if (mounted && _categories.isNotEmpty) {
+                    final productProvider = Provider.of<ProductProvider>(context, listen: false);
+                    productProvider.loadAllProductsByCategory(_categories[_selectedCategoryIndex].name);
+                  }
+                },
+              ),
             ],
           ),
         ],
@@ -565,39 +361,68 @@ class _SupermarketDashboardScreenState extends State<SupermarketDashboardScreen>
             ),
             const SizedBox(width: AppTheme.spacingS),
             // Category Tabs
-            ...List.generate(
-              _categories.length,
-              (index) => Padding(
-                padding: const EdgeInsets.only(right: AppTheme.spacingS),
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedCategoryIndex = index;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppTheme.spacingM,
-                      vertical: AppTheme.spacingS,
+            Consumer<CategoryProvider>(
+              builder: (context, categoryProvider, _) {
+                if (categoryProvider.isLoading && _categories.isEmpty) {
+                  return const SizedBox(
+                    height: 40,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                        strokeWidth: 2,
+                      ),
                     ),
-                    decoration: BoxDecoration(
-                      color: _selectedCategoryIndex == index
-                          ? AppColors.primary
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                    ),
-                    child: Text(
-                      _categories[index],
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: _selectedCategoryIndex == index
-                            ? AppColors.textOnPrimary
-                            : Colors.white,
-                        fontSize: 14,
+                  );
+                }
+                
+                final categories = categoryProvider.categories.isNotEmpty 
+                    ? categoryProvider.categories 
+                    : _categories;
+                
+                if (categories.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                
+                return Row(
+                  children: List.generate(
+                    categories.length,
+                    (index) => Padding(
+                      padding: const EdgeInsets.only(right: AppTheme.spacingS),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedCategoryIndex = index;
+                          });
+                          // Load all products for selected category (admin view - includes unavailable)
+                          final productProvider = Provider.of<ProductProvider>(context, listen: false);
+                          productProvider.loadAllProductsByCategory(categories[index].name);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppTheme.spacingM,
+                            vertical: AppTheme.spacingS,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _selectedCategoryIndex == index
+                                ? AppColors.primary
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                          ),
+                          child: Text(
+                            categories[index].name,
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: _selectedCategoryIndex == index
+                                  ? AppColors.textOnPrimary
+                                  : Colors.white,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ],
         ),
@@ -606,125 +431,198 @@ class _SupermarketDashboardScreenState extends State<SupermarketDashboardScreen>
   }
 
   Widget _buildProductGrid() {
-    final products = _currentProducts;
-    
-    if (products.isEmpty) {
-      return Center(
-        child: Text(
-          'No products available',
-          style: AppTextStyles.bodyLarge.copyWith(
-            color: Colors.white,
+    return Consumer<ProductProvider>(
+      builder: (context, productProvider, _) {
+        if (productProvider.isLoading) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: AppColors.primary,
+            ),
+          );
+        }
+
+        if (productProvider.error != null) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  productProvider.error!,
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: AppTheme.spacingM),
+                ElevatedButton(
+                  onPressed: () {
+                    if (_categories.isNotEmpty) {
+                      productProvider.loadAllProductsByCategory(_categories[_selectedCategoryIndex].name);
+                    }
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final products = _currentProducts;
+        
+        if (products.isEmpty) {
+          return Center(
+            child: Text(
+              'No products available',
+              style: AppTextStyles.bodyLarge.copyWith(
+                color: Colors.white,
+              ),
+            ),
+          );
+        }
+        
+        return Container(
+          padding: const EdgeInsets.all(AppTheme.spacingM),
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: AppTheme.spacingM,
+              mainAxisSpacing: AppTheme.spacingM,
+              childAspectRatio: 0.75,
+            ),
+            itemCount: products.length,
+            itemBuilder: (context, index) {
+              final product = products[index];
+              return _buildProductCard(product);
+            },
           ),
-        ),
-      );
-    }
-    
-    return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingM),
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: AppTheme.spacingM,
-          mainAxisSpacing: AppTheme.spacingM,
-          childAspectRatio: 0.75,
-        ),
-        itemCount: products.length,
-        itemBuilder: (context, index) {
-          final product = products[index];
-          return _buildProductCard(product);
-        },
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildProductCard(Map<String, dynamic> product) {
-    return Container(
-      decoration: BoxDecoration(
-        color: ThemeHelper.isDarkMode(context)
-            ? AppColors.darkSurface
-            : const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(AppTheme.radiusL),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Product Image
-          Expanded(
-            flex: 3,
-            child: ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(AppTheme.radiusL),
-                topRight: Radius.circular(AppTheme.radiusL),
-              ),
-              child: Image.network(
-                product['image'] as String,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                headers: const {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                  'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: Colors.grey[800],
-                    child: Icon(
-                      Icons.image_not_supported,
-                      color: Colors.grey[600],
-                      size: 40,
-                    ),
-                  );
-                },
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Container(
-                    color: Colors.grey[800],
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        value: loadingProgress.expectedTotalBytes != null
-                            ? loadingProgress.cumulativeBytesLoaded /
-                                loadingProgress.expectedTotalBytes!
-                            : null,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
+  Widget _buildProductCard(ProductModel product) {
+    return GestureDetector(
+      onTap: () async {
+        // Navigate to edit screen
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => AddEditProductScreen(product: product),
           ),
-          // Product Details
-          Expanded(
-            flex: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingS),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
+        );
+        // Refresh products after returning
+        if (mounted && _categories.isNotEmpty) {
+          final productProvider = Provider.of<ProductProvider>(context, listen: false);
+          productProvider.loadAllProductsByCategory(_categories[_selectedCategoryIndex].name);
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: ThemeHelper.isDarkMode(context)
+              ? AppColors.darkSurface
+              : const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Product Image
+            Expanded(
+              flex: 3,
+              child: Stack(
                 children: [
-                  Text(
-                    product['name'] as String,
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                  ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(AppTheme.radiusL),
+                      topRight: Radius.circular(AppTheme.radiusL),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    child: Image.network(
+                      product.imageUrl,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      headers: const {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey[800],
+                          child: Icon(
+                            Icons.image_not_supported,
+                            color: Colors.grey[600],
+                            size: 40,
+                          ),
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: Colors.grey[800],
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '\$${product['price'].toStringAsFixed(2)}',
-                    style: AppTextStyles.titleMedium.copyWith(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                  // Edit button overlay
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      padding: const EdgeInsets.all(6),
+                      child: const Icon(
+                        Icons.edit,
+                        color: AppColors.textOnPrimary,
+                        size: 16,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+            // Product Details
+            Expanded(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(AppTheme.spacingS),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      product.name,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      product.formattedCurrentPrice,
+                      style: AppTextStyles.titleMedium.copyWith(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

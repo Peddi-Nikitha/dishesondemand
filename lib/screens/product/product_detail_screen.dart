@@ -1,29 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
-import '../../models/menu_item.dart';
+import '../../models/product_model.dart';
+import '../../providers/product_provider.dart';
+import '../../providers/cart_provider.dart';
+import '../../providers/auth_provider.dart';
 
 /// Product detail screen showing full product information
 class ProductDetailScreen extends StatefulWidget {
-  final String productName;
-  final String category;
-  final String imageUrl;
-  final String price;
-  final double rating;
-  final String quantity;
-  final String description;
+  final String? productId;
+  // Legacy parameters for backward compatibility
+  final String? productName;
+  final String? category;
+  final String? imageUrl;
+  final String? price;
+  final double? rating;
+  final String? quantity;
+  final String? description;
 
   const ProductDetailScreen({
     super.key,
-    required this.productName,
-    required this.category,
-    required this.imageUrl,
-    required this.price,
-    this.rating = 4.5,
-    required this.quantity,
-    required this.description,
+    this.productId,
+    // Legacy parameters
+    this.productName,
+    this.category,
+    this.imageUrl,
+    this.price,
+    this.rating,
+    this.quantity,
+    this.description,
   });
 
   @override
@@ -34,7 +42,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final PageController _imagePageController = PageController();
   int _currentImageIndex = 0;
   int _quantity = 1;
-  bool _isFavorite = false;
+  ProductModel? _product;
+  bool _isLoading = true;
+  String? _error;
 
   // Sample images for carousel
   final List<String> _productImages = [];
@@ -42,10 +52,49 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   void initState() {
     super.initState();
-    // Add main image and additional images
-    _productImages.add(widget.imageUrl);
-    _productImages.add(widget.imageUrl); // Can add more images here
-    _productImages.add(widget.imageUrl);
+    if (widget.productId != null) {
+      _loadProduct();
+    } else {
+      // Legacy mode - use provided parameters
+      _productImages.add(widget.imageUrl ?? '');
+      _productImages.add(widget.imageUrl ?? '');
+      _productImages.add(widget.imageUrl ?? '');
+      _isLoading = false;
+    }
+  }
+
+  Future<void> _loadProduct() async {
+    if (widget.productId == null) return;
+    
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final productProvider = Provider.of<ProductProvider>(context, listen: false);
+      final product = await productProvider.getProductById(widget.productId!);
+      
+      if (product != null) {
+        setState(() {
+          _product = product;
+          _productImages.add(product.imageUrl);
+          _productImages.add(product.imageUrl);
+          _productImages.add(product.imageUrl);
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _error = 'Product not found';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -75,12 +124,59 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   double _getTotalPrice() {
-    final priceValue = double.tryParse(widget.price.replaceAll('\$', '')) ?? 0.0;
+    if (_product != null) {
+      return _product!.currentPrice * _quantity;
+    }
+    final priceValue = double.tryParse((widget.price ?? '0').replaceAll('\$', '')) ?? 0.0;
     return priceValue * _quantity;
   }
 
+  // Helper getters for backward compatibility
+  String get _productName => _product?.name ?? widget.productName ?? 'Product';
+  String get _category => _product?.category ?? widget.category ?? 'Category';
+  String get _imageUrl => _product?.imageUrl ?? widget.imageUrl ?? '';
+  double get _rating => _product?.rating ?? widget.rating ?? 4.5;
+  String get _quantityText => _product?.quantity ?? widget.quantity ?? '1 serving';
+  String get _description => _product?.description ?? widget.description ?? '';
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: ThemeHelper.getBackgroundColor(context),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: ThemeHelper.getBackgroundColor(context),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 64,
+                color: AppColors.error,
+              ),
+              const SizedBox(height: AppTheme.spacingM),
+              Text(
+                _error!,
+                style: AppTextStyles.bodyLarge.copyWith(
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(height: AppTheme.spacingM),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Go Back'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: ThemeHelper.getBackgroundColor(context),
       body: SafeArea(
@@ -107,7 +203,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         children: [
                           // Category
                           Text(
-                            widget.category,
+                            _category,
                             style: AppTextStyles.bodySmall.copyWith(
                               color: ThemeHelper.getTextSecondaryColor(context),
                               fontSize: 14,
@@ -123,7 +219,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      widget.productName,
+                                      _productName,
                                       style: AppTextStyles.headlineMedium.copyWith(
                                         color: ThemeHelper.getTextPrimaryColor(context),
                                         fontWeight: FontWeight.bold,
@@ -135,13 +231,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                     Row(
                                       children: [
                                         ...List.generate(5, (index) {
-                                          if (index < widget.rating.floor()) {
+                                          if (index < _rating.floor()) {
                                             return Icon(
                                               Icons.star,
                                               color: Colors.amber,
                                               size: 18,
                                             );
-                                          } else if (index < widget.rating) {
+                                          } else if (index < _rating) {
                                             return Icon(
                                               Icons.star_half,
                                               color: Colors.amber,
@@ -157,7 +253,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                         }),
                                         const SizedBox(width: 8),
                                         Text(
-                                          '(${widget.rating})',
+                                          '(${_rating.toStringAsFixed(1)})',
                                           style: AppTextStyles.bodyMedium.copyWith(
                                             color: AppColors.buttonPrimary,
                                             fontSize: 14,
@@ -185,7 +281,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           ),
                           const SizedBox(height: AppTheme.spacingM),
                           Text(
-                            widget.description,
+                            _description,
                             style: AppTextStyles.bodyMedium.copyWith(
                               color: ThemeHelper.getTextSecondaryColor(context),
                               fontSize: 14,
@@ -257,27 +353,44 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
           const Spacer(),
           // Favorite Button
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _isFavorite = !_isFavorite;
-              });
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, child) {
+              final isFavorite = _product != null && authProvider.isFavorite(_product!.id);
+              return GestureDetector(
+                onTap: () async {
+                  if (_product != null) {
+                    final success = await authProvider.toggleFavorite(_product!.id);
+                    if (success && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            isFavorite
+                                ? '${_product!.name} removed from favorites'
+                                : '${_product!.name} added to favorites',
+                          ),
+                          duration: const Duration(seconds: 1),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: ThemeHelper.getSurfaceColor(context),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: isFavorite
+                        ? AppColors.primary
+                        : ThemeHelper.getTextPrimaryColor(context),
+                    size: 20,
+                  ),
+                ),
+              );
             },
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: ThemeHelper.getSurfaceColor(context),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                _isFavorite ? Icons.favorite : Icons.favorite_border,
-                color: _isFavorite
-                    ? AppColors.primary
-                    : ThemeHelper.getTextPrimaryColor(context),
-                size: 20,
-              ),
-            ),
           ),
         ],
       ),
@@ -295,8 +408,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             onPageChanged: _onImagePageChanged,
             itemCount: _productImages.length,
             itemBuilder: (context, index) {
+              final imageUrl = _productImages.isNotEmpty 
+                  ? _productImages[index] 
+                  : _imageUrl;
               return Image.network(
-                _productImages[index],
+                imageUrl,
                 fit: BoxFit.contain,
                 headers: const {
                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -422,7 +538,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           const SizedBox(width: AppTheme.spacingS),
           // Unit Text
           Text(
-            widget.quantity.split(' ').last, // Extract unit (kg, ml, etc.)
+            _quantityText.split(' ').last, // Extract unit (kg, ml, etc.)
             style: AppTextStyles.bodyMedium.copyWith(
               color: ThemeHelper.getTextPrimaryColor(context),
             ),
@@ -433,14 +549,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Widget _buildMoreProductsList() {
-    // Helper function to get image URL from MenuData
+    // Helper function to get image URL from product provider
     String _getImageUrl(String itemName) {
-      final allItems = MenuData.allItems;
-      final item = allItems.firstWhere(
-        (item) => item.name == itemName,
-        orElse: () => allItems.first,
-      );
-      return item.imageUrl;
+      final productProvider = Provider.of<ProductProvider>(context, listen: false);
+      final products = productProvider.products;
+      if (products.isEmpty) return '';
+      try {
+        final product = products.firstWhere(
+          (p) => p.name == itemName,
+        );
+        return product.imageUrl;
+      } catch (e) {
+        return products.first.imageUrl;
+      }
     }
 
     final moreProducts = [
@@ -486,24 +607,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         itemBuilder: (context, index) {
           return GestureDetector(
             onTap: () {
-              // Get product data from MenuData
-              final allItems = MenuData.allItems;
-              final item = allItems.firstWhere(
-                (item) => item.name == moreProducts[index]['name']!,
-                orElse: () => allItems.first,
-              );
+              // Get product data from product provider
+              final productProvider = Provider.of<ProductProvider>(context, listen: false);
+              final products = productProvider.products;
+              if (products.isEmpty) return;
+              ProductModel? product;
+              try {
+                product = products.firstWhere(
+                  (p) => p.name == moreProducts[index]['name']!,
+                );
+              } catch (e) {
+                product = products.first;
+              }
               
               // Navigate to product detail
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(
                   builder: (context) => ProductDetailScreen(
-                    productName: item.name,
-                    category: item.category,
-                    imageUrl: item.imageUrl,
-                    price: item.formattedCurrentPrice,
-                    rating: item.rating,
-                    quantity: item.quantity,
-                    description: item.description,
+                    productId: product!.id,
                   ),
                 ),
               );
@@ -595,15 +716,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             Expanded(
               flex: 2,
               child: ElevatedButton(
-                onPressed: () {
-                  // Handle add to cart
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('${widget.productName} added to cart'),
-                      backgroundColor: AppColors.buttonPrimary,
-                    ),
-                  );
-                },
+                onPressed: _product != null && _product!.isAvailable
+                    ? () {
+                        final cartProvider = Provider.of<CartProvider>(context, listen: false);
+                        // Add the product _quantity times
+                        for (int i = 0; i < _quantity; i++) {
+                          cartProvider.addItem(_product!);
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('$_productName added to cart'),
+                            backgroundColor: AppColors.buttonPrimary,
+                          ),
+                        );
+                      }
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.buttonPrimary,
                   foregroundColor: AppColors.textOnPrimary,

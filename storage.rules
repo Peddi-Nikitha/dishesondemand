@@ -1,0 +1,39 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow read access to all files
+    match /{allPaths=**} {
+      allow read: if true;
+    }
+    
+    // Products - allow authenticated users to upload
+    match /products/{productId}/{fileName} {
+      allow write: if request.auth != null;
+      allow read: if true;
+    }
+    
+    // Restaurant logo - allow authenticated users to upload
+    match /restaurant/logo/{fileName} {
+      allow write: if request.auth != null;
+      allow read: if true;
+    }
+    
+    // User profile images - allow authenticated users to upload their own
+    match /users/{userId}/profile/{fileName} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if true;
+    }
+    
+    // Delivery boy documents - allow authenticated users to upload
+    match /deliveryBoys/{deliveryBoyId}/documents/{fileName} {
+      allow write: if request.auth != null;
+      allow read: if request.auth != null;
+    }
+    
+    // Default: deny all other writes
+    match /{allPaths=**} {
+      allow write: if false;
+    }
+  }
+}
+

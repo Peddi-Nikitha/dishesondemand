@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../utils/constants.dart';
+import '../../providers/auth_provider.dart';
+import '../home/home_screen.dart';
+import '../delivery/delivery_home_screen.dart';
+import '../supermarket/supermarket_dashboard_screen.dart';
 import 'splash_data.dart';
 import 'splash_page.dart';
 import '../welcome/welcome_screen.dart';
@@ -47,11 +53,34 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _navigateToHome() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => const WelcomeScreen(),
-      ),
-    );
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    // If user is already authenticated, navigate based on role
+    if (authProvider.isAuthenticated && authProvider.userRole != null) {
+      final role = authProvider.userRole;
+
+      Widget target;
+      if (role == AppConstants.roleUser) {
+        target = const HomeScreen();
+      } else if (role == AppConstants.roleDeliveryBoy) {
+        target = const DeliveryHomeScreen();
+      } else if (role == AppConstants.roleAdmin) {
+        target = const SupermarketDashboardScreen();
+      } else {
+        target = const WelcomeScreen();
+      }
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => target),
+      );
+    } else {
+      // No authenticated user -> go to onboarding / welcome
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => const WelcomeScreen(),
+        ),
+      );
+    }
   }
 
   @override

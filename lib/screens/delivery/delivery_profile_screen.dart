@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
@@ -8,6 +9,8 @@ import '../../widgets/delivery_settings_option.dart';
 import '../../widgets/delivery_bottom_nav_bar.dart';
 import '../../widgets/theme_toggle_selector.dart';
 import '../../widgets/logout_dialog.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/notification_provider.dart';
 import 'delivery_home_screen.dart';
 import 'earnings_screen.dart';
 import 'notifications_screen.dart';
@@ -25,12 +28,17 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
   int _currentNavIndex = 4; // Profile is index 4
   bool _notificationsEnabled = true;
 
-  // Profile image URL
-  static const String profileImageUrl =
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop';
-
   @override
   Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final notificationProvider = Provider.of<NotificationProvider>(context);
+    final deliveryBoy = authProvider.deliveryBoyModel;
+
+    final profileImageUrl = deliveryBoy?.photoUrl ??
+        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop';
+    final name = deliveryBoy?.name ?? 'Driver';
+    final email = deliveryBoy?.email ?? authProvider.user?.email ?? '';
+
     return Scaffold(
       backgroundColor: ThemeHelper.getBackgroundColor(context),
       appBar: AppBar(
@@ -73,10 +81,10 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                     // Profile header
                     DeliveryProfileHeader(
                       profileImageUrl: profileImageUrl,
-                      name: 'Mohamed Tarek',
-                      email: 'foxf.com@gmail.com',
+                      name: name,
+                      email: email,
                       onEditTap: () {
-                        // Handle edit profile
+                        _showEditProfileDialog(context, authProvider, name, deliveryBoy?.phone);
                       },
                     ),
                     const SizedBox(height: AppTheme.spacingXL),
@@ -172,7 +180,7 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
             // Bottom Navigation Bar
             DeliveryBottomNavBar(
               currentIndex: _currentNavIndex,
-              notificationCount: 2,
+              notificationCount: notificationProvider.unreadCount,
               onTap: (index) {
                 if (index == 0) {
                   // Navigate to Home
@@ -217,6 +225,77 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  void _showEditProfileDialog(
+    BuildContext context,
+    AuthProvider authProvider,
+    String currentName,
+    String? currentPhone,
+  ) {
+    final nameController = TextEditingController(text: currentName);
+    final phoneController = TextEditingController(text: currentPhone ?? '');
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Edit Profile'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Name',
+                ),
+              ),
+              const SizedBox(height: AppTheme.spacingM),
+              TextField(
+                controller: phoneController,
+                decoration: const InputDecoration(
+                  labelText: 'Phone',
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final success = await authProvider.updateDeliveryBoyProfile(
+                  name: nameController.text.trim().isEmpty
+                      ? null
+                      : nameController.text.trim(),
+                  phone: phoneController.text.trim().isEmpty
+                      ? null
+                      : phoneController.text.trim(),
+                );
+
+                if (!mounted) return;
+
+                Navigator.of(dialogContext).pop();
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? 'Profile updated successfully'
+                          : authProvider.error ?? 'Failed to update profile',
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

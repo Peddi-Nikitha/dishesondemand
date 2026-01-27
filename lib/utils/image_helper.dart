@@ -19,7 +19,7 @@ class ImageHelper {
     int? cacheWidth,
     int? cacheHeight,
     Widget? placeholder,
-    Widget Function(BuildContext, Object, StackTrace)? errorBuilder,
+    ImageErrorWidgetBuilder? errorBuilder,
   }) {
     return Image.network(
       url,

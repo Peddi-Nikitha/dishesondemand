@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "964605209518",
+    "project_id": "dishesondemandv2",
+    "storage_bucket": "dishesondemandv2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:964605209518:android:62d5a19e421e9d8996363f",
+        "android_client_info": {
+          "package_name": "com.dishesondemandresto"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDusOEXRsGed2wuTvWGosurB5mAdqON--k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
+

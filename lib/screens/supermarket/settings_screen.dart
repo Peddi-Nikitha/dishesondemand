@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../providers/settings_provider.dart';
+import '../../models/restaurant_settings_model.dart';
+import '../../services/storage_service.dart';
 import 'supermarket_dashboard_screen.dart';
 import 'customers_screen.dart';
 import 'order_history_screen.dart';
+import 'category_management_screen.dart';
+import 'delivery_boy_management_screen.dart';
 
 /// Settings Screen for POS System
 /// Matches the design with orange theme instead of green
@@ -26,20 +34,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final List<String> _tabs = ['Market', 'Employees', 'Items'];
 
   // Form controllers
-  final _restaurantNameController = TextEditingController(text: 'Restaurant OX');
-  final _restaurantPhoneController = TextEditingController(text: '+2 01090229396');
-  final _restaurantMailController = TextEditingController(text: 'foxf.com@gmail.com');
-  final _restaurantAddressController = TextEditingController(text: 'New Cairo - Egypt');
-  final _restaurantFacebookController = TextEditingController(text: 'Restaurant Facebook');
-  final _restaurantXController = TextEditingController(text: 'Restaurant X.com');
-  final _restaurantTikTokController = TextEditingController(text: 'Restaurant TikTok');
-  final _restaurantYouTubeController = TextEditingController(text: 'Restaurant YouTube');
-  final _currencyController = TextEditingController(text: '\$');
-  final _generalDiscountController = TextEditingController(text: '%');
+  final _restaurantNameController = TextEditingController();
+  final _restaurantPhoneController = TextEditingController();
+  final _restaurantMailController = TextEditingController();
+  final _restaurantAddressController = TextEditingController();
+  final _restaurantFacebookController = TextEditingController();
+  final _restaurantXController = TextEditingController();
+  final _restaurantTikTokController = TextEditingController();
+  final _restaurantYouTubeController = TextEditingController();
+  final _currencyController = TextEditingController();
+  final _generalDiscountController = TextEditingController();
 
   bool _deliveryEnabled = false;
   bool _orderReservationEnabled = false;
   File? _selectedLogoImage;
+  Uint8List? _selectedLogoImageBytes; // For web support
+  String? _logoUrl;
+  bool _isUploadingLogo = false;
+  bool _isSaving = false;
+  final StorageService _storageService = StorageService();
 
   void _openDrawer() {
     _scaffoldKey.currentState?.openDrawer();
@@ -73,13 +86,191 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+      settingsProvider.loadSettings().then((_) {
+        _populateFields(settingsProvider.settings);
+      });
+    });
+  }
+
+  void _populateFields(RestaurantSettingsModel? settings) {
+    if (settings != null) {
+      _restaurantNameController.text = settings.name;
+      _restaurantPhoneController.text = settings.phone;
+      _restaurantMailController.text = settings.email;
+      _restaurantAddressController.text = settings.address;
+      _currencyController.text = settings.currency;
+      _generalDiscountController.text = settings.generalDiscount.toString();
+      _deliveryEnabled = settings.deliveryEnabled;
+      _orderReservationEnabled = settings.orderReservationEnabled;
+      _logoUrl = settings.logoUrl;
+      
+      if (settings.socialMedia != null) {
+        _restaurantFacebookController.text = settings.socialMedia!['facebook'] ?? '';
+        _restaurantXController.text = settings.socialMedia!['twitter'] ?? '';
+        _restaurantTikTokController.text = settings.socialMedia!['tiktok'] ?? '';
+        _restaurantYouTubeController.text = settings.socialMedia!['youtube'] ?? '';
+      }
+    }
+  }
+
   Future<void> _pickLogoImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
+      if (kIsWeb) {
+        // For web, read bytes instead of using File
+        final bytes = await image.readAsBytes();
+        setState(() {
+          _selectedLogoImageBytes = bytes;
+          _selectedLogoImage = null; // Clear File reference on web
+          _logoUrl = null; // Clear old URL when new image is selected
+        });
+      } else {
+        // For mobile/desktop, use File
+        setState(() {
+          _selectedLogoImage = File(image.path);
+          _selectedLogoImageBytes = null; // Clear bytes on mobile
+          _logoUrl = null; // Clear old URL when new image is selected
+        });
+      }
+    }
+  }
+
+  Future<String?> _uploadLogo() async {
+    if (kIsWeb) {
+      if (_selectedLogoImageBytes == null) {
+        return _logoUrl; // Return existing URL if no new image
+      }
+    } else {
+      if (_selectedLogoImage == null) {
+        return _logoUrl; // Return existing URL if no new image
+      }
+    }
+
+    try {
       setState(() {
-        _selectedLogoImage = File(image.path);
+        _isUploadingLogo = true;
       });
+
+      String downloadUrl;
+      if (kIsWeb) {
+        downloadUrl = await _storageService.uploadRestaurantLogoBytes(_selectedLogoImageBytes!);
+      } else {
+        downloadUrl = await _storageService.uploadRestaurantLogo(_selectedLogoImage!);
+      }
+
+      setState(() {
+        _isUploadingLogo = false;
+        _logoUrl = downloadUrl;
+      });
+
+      return downloadUrl;
+    } catch (e) {
+      setState(() {
+        _isUploadingLogo = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error uploading logo: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      // Upload logo if a new one was selected
+      String? finalLogoUrl = _logoUrl;
+      if (_selectedLogoImage != null) {
+        finalLogoUrl = await _uploadLogo();
+        if (finalLogoUrl == null) {
+          setState(() {
+            _isSaving = false;
+          });
+          return;
+        }
+      }
+
+      final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+
+      final socialMedia = <String, String>{};
+      if (_restaurantFacebookController.text.trim().isNotEmpty) {
+        socialMedia['facebook'] = _restaurantFacebookController.text.trim();
+      }
+      if (_restaurantXController.text.trim().isNotEmpty) {
+        socialMedia['twitter'] = _restaurantXController.text.trim();
+      }
+      if (_restaurantTikTokController.text.trim().isNotEmpty) {
+        socialMedia['tiktok'] = _restaurantTikTokController.text.trim();
+      }
+      if (_restaurantYouTubeController.text.trim().isNotEmpty) {
+        socialMedia['youtube'] = _restaurantYouTubeController.text.trim();
+      }
+
+      final settings = RestaurantSettingsModel(
+        name: _restaurantNameController.text.trim(),
+        phone: _restaurantPhoneController.text.trim(),
+        email: _restaurantMailController.text.trim(),
+        address: _restaurantAddressController.text.trim(),
+        logoUrl: finalLogoUrl,
+        currency: _currencyController.text.trim().isNotEmpty
+            ? _currencyController.text.trim()
+            : '\$',
+        generalDiscount: double.tryParse(_generalDiscountController.text.trim()) ?? 0.0,
+        deliveryEnabled: _deliveryEnabled,
+        orderReservationEnabled: _orderReservationEnabled,
+        socialMedia: socialMedia.isNotEmpty ? socialMedia : null,
+        updatedAt: DateTime.now(),
+      );
+
+      final success = await settingsProvider.updateSettings(settings);
+
+      setState(() {
+        _isSaving = false;
+      });
+
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Settings saved successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              settingsProvider.error ?? 'Failed to save settings',
+            ),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isSaving = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -387,6 +578,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildContent() {
+    // Show different content based on selected tab
+    if (_selectedTabIndex == 1) {
+      // Employees tab - Delivery Boy Management
+      return const DeliveryBoyManagementScreen();
+    } else if (_selectedTabIndex == 2) {
+      // Items tab - Category Management
+      return const CategoryManagementScreen();
+    }
+    
+    // Market tab - Restaurant Settings
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppTheme.spacingL),
       child: Column(
@@ -510,31 +711,110 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(AppTheme.radiusM),
                 ),
-                child: _selectedLogoImage != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                        child: Image.file(
-                          _selectedLogoImage!,
-                          fit: BoxFit.cover,
+                child: _isUploadingLogo
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primary,
                         ),
                       )
-                    : ClipRRect(
-                        borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                        child: Image.network(
-                          'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=200&h=200&fit=crop',
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: Colors.grey[200],
-                              child: Icon(
-                                Icons.restaurant,
-                                size: 60,
-                                color: Colors.grey[600],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                    : (_selectedLogoImage != null || _selectedLogoImageBytes != null || (_logoUrl != null && _logoUrl!.isNotEmpty))
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                            child: _selectedLogoImageBytes != null
+                                ? Image.memory(
+                                    _selectedLogoImageBytes!,
+                                    width: 150,
+                                    height: 150,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        width: 150,
+                                        height: 150,
+                                        color: Colors.grey[200],
+                                        child: Icon(
+                                          Icons.restaurant,
+                                          size: 60,
+                                          color: Colors.grey[600],
+                                        ),
+                                      );
+                                    },
+                                  )
+                                : _selectedLogoImage != null
+                                    ? Image.file(
+                                        _selectedLogoImage!,
+                                        width: 150,
+                                        height: 150,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return Container(
+                                            width: 150,
+                                            height: 150,
+                                            color: Colors.grey[200],
+                                            child: Icon(
+                                              Icons.restaurant,
+                                              size: 60,
+                                              color: Colors.grey[600],
+                                            ),
+                                          );
+                                        },
+                                      )
+                                : (_logoUrl != null && _logoUrl!.isNotEmpty
+                                    ? Image.network(
+                                        _logoUrl!,
+                                        width: 150,
+                                        height: 150,
+                                        fit: BoxFit.cover,
+                                        loadingBuilder: (context, child, loadingProgress) {
+                                          if (loadingProgress == null) return child;
+                                          return Container(
+                                            width: 150,
+                                            height: 150,
+                                            color: Colors.grey[200],
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                value: loadingProgress.expectedTotalBytes != null
+                                                    ? loadingProgress.cumulativeBytesLoaded /
+                                                        loadingProgress.expectedTotalBytes!
+                                                    : null,
+                                                color: AppColors.primary,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return Container(
+                                            width: 150,
+                                            height: 150,
+                                            color: Colors.grey[200],
+                                            child: Icon(
+                                              Icons.restaurant,
+                                              size: 60,
+                                              color: Colors.grey[600],
+                                            ),
+                                          );
+                                        },
+                                      )
+                                    : Container(
+                                        width: 150,
+                                        height: 150,
+                                        color: Colors.grey[200],
+                                        child: Icon(
+                                          Icons.restaurant,
+                                          size: 60,
+                                          color: Colors.grey[600],
+                                        ),
+                                      )),
+                          )
+                        : Container(
+                            width: 150,
+                            height: 150,
+                            color: Colors.grey[200],
+                            child: Icon(
+                              Icons.restaurant,
+                              size: 60,
+                              color: Colors.grey[600],
+                            ),
+                          ),
               ),
             ],
           ),
@@ -544,14 +824,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: () {
-                // Handle save logo
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Logo saved successfully'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
+              onPressed: _isUploadingLogo ? null : () async {
+                final url = await _uploadLogo();
+                if (url != null && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Logo uploaded successfully'),
+                      backgroundColor: AppColors.success,
+                    ),
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
@@ -621,15 +903,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: () {
-                // Handle save settings
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Settings saved successfully'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-              },
+              onPressed: (_isSaving || _isUploadingLogo) ? null : _saveSettings,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: AppColors.textOnPrimary,
@@ -637,10 +911,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   borderRadius: BorderRadius.circular(AppTheme.radiusM),
                 ),
               ),
-              child: Text(
-                'Save',
-                style: AppTextStyles.buttonLarge,
-              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.textOnPrimary),
+                      ),
+                    )
+                  : Text(
+                      'Save',
+                      style: AppTextStyles.buttonLarge,
+                    ),
             ),
           ),
           const SizedBox(height: AppTheme.spacingXL),

@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../utils/constants.dart';
 import '../../widgets/pickup_location_card.dart';
 import '../../widgets/contact_info_card.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/order_provider.dart';
+import '../../models/order_model.dart';
+import 'delivery_completion_screen.dart';
 
 /// Pickup task screen with map and information panel
 class PickupTaskScreen extends StatelessWidget {
@@ -19,139 +25,252 @@ class PickupTaskScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: ThemeHelper.getBackgroundColor(context),
       body: SafeArea(
-        child: Column(
-          children: [
-            // Map section (top 2/3)
-            Expanded(
-              flex: 2,
-              child: Stack(
-                children: [
-                  // Map background (using a placeholder image)
-                  Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    decoration: BoxDecoration(
-                      color: ThemeHelper.getSurfaceColor(context),
-                    ),
-                    child: Image.network(
-                      'https://images.unsplash.com/photo-1524661135-423995f22d0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
-                      fit: BoxFit.cover,
-                      headers: const {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: ThemeHelper.getSurfaceColor(context),
-                          child: Center(
-                            child: Icon(
-                              Icons.map,
-                              size: 100,
-                              color: ThemeHelper.getTextSecondaryColor(context),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+        child: Consumer2<AuthProvider, OrderProvider>(
+          builder: (context, authProvider, orderProvider, child) {
+            final user = authProvider.user;
+
+            if (user == null || authProvider.userRole != AppConstants.roleDeliveryBoy) {
+              return Center(
+                child: Text(
+                  'Please sign in as a delivery partner to view pickup tasks.',
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: ThemeHelper.getTextPrimaryColor(context),
                   ),
-                  // Map markers overlay
-                  _buildMapMarkers(context),
-                ],
-              ),
-            ),
-            // Information panel (bottom 1/3)
-            Expanded(
-              flex: 1,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(
-                  AppTheme.spacingL,
-                  AppTheme.spacingL,
-                  AppTheme.spacingL,
-                  AppTheme.spacingM,
+                  textAlign: TextAlign.center,
                 ),
-                decoration: BoxDecoration(
-                  color: ThemeHelper.getBackgroundColor(context),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(AppTheme.radiusXL),
-                    topRight: Radius.circular(AppTheme.radiusXL),
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header with distance
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              );
+            }
+
+            return StreamBuilder<List<OrderModel>>(
+              stream: orderProvider.streamDeliveryBoyOrders(user.uid),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    !snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppTheme.spacingL),
+                      child: Text(
+                        snapshot.error.toString(),
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: ThemeHelper.getTextSecondaryColor(context),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+
+                final orders = snapshot.data ?? [];
+
+                // Active pickup order: assigned or picked_up
+                OrderModel? activeOrder;
+                if (orders.isNotEmpty) {
+                  activeOrder = orders.firstWhere(
+                    (order) =>
+                        order.status == AppConstants.orderStatusAssigned ||
+                        order.status == AppConstants.orderStatusPickedUp,
+                    orElse: () => orders.first,
+                  );
+                }
+
+                if (activeOrder == null ||
+                    (activeOrder.status != AppConstants.orderStatusAssigned &&
+                        activeOrder.status != AppConstants.orderStatusPickedUp)) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppTheme.spacingL),
+                      child: Text(
+                        'No pickup tasks available right now.',
+                        style: AppTextStyles.titleMedium.copyWith(
+                          color: ThemeHelper.getTextPrimaryColor(context),
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+
+                // Basic formatting helpers
+                String _formatAddress(OrderModel order) {
+                  final addr = order.deliveryAddress;
+                  return '${addr.street}, ${addr.city}, ${addr.state}, ${addr.zipCode}';
+                }
+
+                final customerName = authProvider.userModel?.name ?? 'Customer';
+                final customerPhone = authProvider.userModel?.phone ?? 'N/A';
+
+                return Column(
+                  children: [
+                    // Map section (top 2/3) – still using placeholder image
+                    Expanded(
+                      flex: 2,
+                      child: Stack(
                         children: [
-                          Flexible(
-                            child: Text(
-                              'Going to Pick Up',
-                              style: AppTextStyles.titleLarge.copyWith(
-                                color: ThemeHelper.getTextPrimaryColor(context),
-                                fontWeight: FontWeight.bold,
-                              ),
+                          Container(
+                            width: double.infinity,
+                            height: double.infinity,
+                            decoration: BoxDecoration(
+                              color: ThemeHelper.getSurfaceColor(context),
+                            ),
+                            child: Image.network(
+                              'https://images.unsplash.com/photo-1524661135-423995f22d0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+                              fit: BoxFit.cover,
+                              headers: const {
+                                'User-Agent':
+                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: ThemeHelper.getSurfaceColor(context),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.map,
+                                      size: 100,
+                                      color:
+                                          ThemeHelper.getTextSecondaryColor(context),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
-                          const SizedBox(width: AppTheme.spacingS),
-                          Text(
-                            '5.5 KM Away',
-                            style: AppTextStyles.titleMedium.copyWith(
-                              color: ThemeHelper.getPrimaryColor(context),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          _buildMapMarkers(context),
                         ],
                       ),
-                      const SizedBox(height: AppTheme.spacingM),
-                      // Pickup location card
-                      PickupLocationCard(
-                        address: '4 Sultan Bello, Agric, IKE). Lagos. Nigeria.',
-                        icon: Icons.shopping_cart,
-                      ),
-                      const SizedBox(height: AppTheme.spacingM),
-                      // Contact info card
-                      ContactInfoCard(
-                        profileImageUrl: profileImageUrl,
-                        name: 'Mohamed Tarek',
-                        phoneNumber: '+201090229396',
-                        onCallTap: () {
-                          // Handle call
-                        },
-                        onChatTap: () {
-                          // Handle chat
-                        },
-                      ),
-                      const SizedBox(height: AppTheme.spacingM),
-                      // I've arrived button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            // Handle arrived
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: ThemeHelper.getPrimaryColor(context),
-                            foregroundColor: AppColors.textOnPrimary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                            ),
-                            elevation: 0,
+                    ),
+                    // Information panel (bottom 1/3)
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppTheme.spacingL,
+                          AppTheme.spacingL,
+                          AppTheme.spacingL,
+                          AppTheme.spacingM,
+                        ),
+                        decoration: BoxDecoration(
+                          color: ThemeHelper.getBackgroundColor(context),
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(AppTheme.radiusXL),
+                            topRight: Radius.circular(AppTheme.radiusXL),
                           ),
-                          child: Text(
-                            "I've arrived",
-                            style: AppTextStyles.buttonLarge,
+                        ),
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header with order number
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      'Going to Pick Up',
+                                      style: AppTextStyles.titleLarge.copyWith(
+                                        color: ThemeHelper.getTextPrimaryColor(context),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppTheme.spacingS),
+                                  Text(
+                                    '#${activeOrder.orderNumber}',
+                                    style: AppTextStyles.titleMedium.copyWith(
+                                      color: ThemeHelper.getPrimaryColor(context),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: AppTheme.spacingM),
+                              // Pickup location card (using delivery address for now)
+                              PickupLocationCard(
+                                address: _formatAddress(activeOrder),
+                                icon: Icons.shopping_cart,
+                              ),
+                              const SizedBox(height: AppTheme.spacingM),
+                              // Contact info card
+                              ContactInfoCard(
+                                profileImageUrl: profileImageUrl,
+                                name: customerName,
+                                phoneNumber: customerPhone,
+                                onCallTap: () {
+                                  // TODO: integrate with phone dialer
+                                },
+                                onChatTap: () {
+                                  // TODO: integrate with chat
+                                },
+                              ),
+                              const SizedBox(height: AppTheme.spacingM),
+                              // I've arrived button
+                              SizedBox(
+                                width: double.infinity,
+                                height: 56,
+                                child: ElevatedButton(
+                                  onPressed: () async {
+                                    // Mark order as picked up and go to completion screen
+                                    final success = await orderProvider
+                                        .updateOrderStatus(
+                                      activeOrder!.id,
+                                      AppConstants.orderStatusPickedUp,
+                                    );
+
+                                    if (!context.mounted) return;
+
+                                    if (success) {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              DeliveryCompletionScreen(
+                                            order: activeOrder!,
+                                          ),
+                                        ),
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            orderProvider.error ??
+                                                'Failed to update order status',
+                                          ),
+                                          backgroundColor: AppColors.error,
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor:
+                                        ThemeHelper.getPrimaryColor(context),
+                                    foregroundColor: AppColors.textOnPrimary,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(AppTheme.radiusM),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  child: Text(
+                                    "I've arrived",
+                                    style: AppTextStyles.buttonLarge,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+                    ),
+                  ],
+                );
+              },
+            );
+          },
         ),
       ),
     );

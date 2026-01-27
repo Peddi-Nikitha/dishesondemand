@@ -4,6 +4,8 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/cart_provider.dart';
 import '../../utils/theme_helper.dart';
 import '../../widgets/profile_header.dart';
 import '../../widgets/account_option_item.dart';
@@ -16,6 +18,9 @@ import '../favourite/favourite_screen.dart';
 import '../orders/my_orders_screen.dart';
 import '../delivery/delivery_welcome_screen.dart';
 import '../auth/supermarket_login_screen.dart';
+import 'edit_profile_screen.dart';
+import 'addresses_screen.dart';
+import 'payment_methods_screen.dart';
 
 /// Production-ready my account screen matching the exact design
 class MyAccountScreen extends StatefulWidget {
@@ -49,12 +54,23 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Profile Header
-                    ProfileHeader(
-                      profileImageUrl: profileImageUrl,
-                      name: 'Mohamed Tarek',
-                      email: 'foxf.com@gmail.com',
-                      onEditTap: () {
-                        // Handle edit profile
+                    Consumer<AuthProvider>(
+                      builder: (context, authProvider, child) {
+                        final userModel = authProvider.userModel;
+                        final user = authProvider.user;
+                        
+                        return ProfileHeader(
+                          profileImageUrl: userModel?.photoUrl ?? profileImageUrl,
+                          name: userModel?.name ?? user?.displayName ?? 'User',
+                          email: userModel?.email ?? user?.email ?? '',
+                          onEditTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const EditProfileScreen(),
+                              ),
+                            );
+                          },
+                        );
                       },
                     ),
                     const SizedBox(height: AppTheme.spacingL),
@@ -82,10 +98,25 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                       },
                     ),
                     AccountOptionItem(
-                      icon: Icons.credit_card,
-                      title: 'Payment Method',
+                      icon: Icons.location_on,
+                      title: 'My Addresses',
                       onTap: () {
-                        // Handle payment method
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const AddressesScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    AccountOptionItem(
+                      icon: Icons.credit_card,
+                      title: 'Payment Methods',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const PaymentMethodsScreen(),
+                          ),
+                        );
                       },
                     ),
                     AccountOptionItem(
@@ -222,10 +253,12 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
               ),
             ),
             // Bottom Navigation Bar
-            CustomBottomNavBar(
-              currentIndex: 4, // Profile is index 4
-              cartItemCount: 3,
-              onTap: (index) {
+            Consumer<CartProvider>(
+              builder: (context, cartProvider, child) {
+                return CustomBottomNavBar(
+                  currentIndex: 4, // Profile is index 4
+                  cartItemCount: cartProvider.itemCount,
+                  onTap: (index) {
                 if (index == 0) {
                   // Navigate to Home
                   Navigator.of(context).popUntil((route) => route.isFirst);
@@ -253,6 +286,8 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                 } else if (index == 4) {
                   // Already on Profile screen - do nothing
                 }
+                  },
+                );
               },
             ),
           ],

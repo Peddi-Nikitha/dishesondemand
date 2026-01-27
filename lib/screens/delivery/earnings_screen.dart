@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../utils/constants.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/order_provider.dart';
+import '../../models/order_model.dart';
 import '../../widgets/earnings_total_card.dart';
 import '../../widgets/earnings_stat_card.dart';
 import '../../widgets/animated_bar_chart.dart';
 import '../../widgets/month_filter_button.dart';
-import '../../widgets/earnings_shipment_item.dart';
 import '../../widgets/delivery_bottom_nav_bar.dart';
 import 'delivery_home_screen.dart';
 import 'notifications_screen.dart';
 import 'delivery_profile_screen.dart';
 import 'pickup_task_screen.dart';
-import 'delivery_completion_screen.dart';
 
 /// Delivery driver earnings screen matching the exact design from screenshot
 class EarningsScreen extends StatefulWidget {
@@ -24,293 +27,388 @@ class EarningsScreen extends StatefulWidget {
 
 class _EarningsScreenState extends State<EarningsScreen> {
   int _currentNavIndex = 1; // Earnings is index 1
-  String _selectedMonth = 'Mar';
-
-  // Bar chart data
-  final List<BarChartData> _chartData = [
-    BarChartData(month: 'Jan', total: 60, bottomSegment: 20),
-    BarChartData(month: 'Feb', total: 80, bottomSegment: 30),
-    BarChartData(month: 'Mar', total: 100, bottomSegment: 40),
-    BarChartData(month: 'Apr', total: 70, bottomSegment: 25),
-    BarChartData(month: 'May', total: 90, bottomSegment: 35),
-  ];
+  String? _selectedMonthKey; // e.g. '01-2026'
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ThemeHelper.getBackgroundColor(context),
       body: SafeArea(
-        child: Column(
-          children: [
-            // Main content
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
-                  AppTheme.spacingL,
-                  AppTheme.spacingL,
-                  AppTheme.spacingL,
-                  AppTheme.spacingM,
+        child: Consumer2<AuthProvider, OrderProvider>(
+          builder: (context, authProvider, orderProvider, child) {
+            final user = authProvider.user;
+
+            if (user == null ||
+                authProvider.userRole != AppConstants.roleDeliveryBoy) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppTheme.spacingL),
+                  child: Text(
+                    'Please sign in as a delivery partner to view earnings.',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      color: ThemeHelper.getTextPrimaryColor(context),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // My Earnings section
-                    Text(
-                      'My Earnings',
-                      style: AppTextStyles.headlineLarge.copyWith(
-                        color: ThemeHelper.getTextPrimaryColor(context),
-                        fontWeight: FontWeight.bold,
+              );
+            }
+
+            return StreamBuilder<List<OrderModel>>(
+              stream: orderProvider.streamDeliveryBoyOrders(user.uid),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    !snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppTheme.spacingL),
+                      child: Text(
+                        snapshot.error.toString(),
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: ThemeHelper.getTextSecondaryColor(context),
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
-                    const SizedBox(height: AppTheme.spacingL),
-                    // Earnings cards row
-                    Row(
-                      children: [
-                        // Total earnings card
-                        Expanded(
-                          flex: 2,
-                          child: EarningsTotalCard(
-                            label: 'Total',
-                            amount: '\$3450.30',
-                            changeText: '0.5% than last month',
-                            isPositive: true,
-                          ),
+                  );
+                }
+
+                final allOrders = snapshot.data ?? [];
+                final deliveredOrders = allOrders
+                    .where(
+                        (o) => o.status == AppConstants.orderStatusDelivered)
+                    .toList();
+
+                final double totalEarnings = deliveredOrders.fold(
+                  0.0,
+                  (sum, o) => sum + o.total,
+                );
+
+                final int totalDeliveries = deliveredOrders.length;
+                final double onTimePercent =
+                    totalDeliveries == 0 ? 0 : 100.0; // placeholder
+
+                // Group by month-year
+                final Map<String, double> monthTotals = {};
+                for (final order in deliveredOrders) {
+                  final date = order.deliveredAt ?? order.createdAt;
+                  final key =
+                      '${date.month.toString().padLeft(2, '0')}-${date.year}';
+                  monthTotals[key] =
+                      (monthTotals[key] ?? 0) + order.total;
+                }
+
+                final months = monthTotals.keys.toList()
+                  ..sort((a, b) {
+                    DateTime parse(String key) {
+                      final p = key.split('-');
+                      return DateTime(int.parse(p[1]), int.parse(p[0]));
+                    }
+
+                    return parse(a).compareTo(parse(b));
+                  });
+
+                if (_selectedMonthKey == null && months.isNotEmpty) {
+                  _selectedMonthKey = months.last;
+                } else if (_selectedMonthKey != null &&
+                    !months.contains(_selectedMonthKey)) {
+                  _selectedMonthKey = months.isNotEmpty ? months.last : null;
+                }
+
+                final chartData = months
+                    .map(
+                      (m) => BarChartData(
+                        month: m,
+                        total: monthTotals[m] ?? 0,
+                        bottomSegment: (monthTotals[m] ?? 0) * 0.4,
+                      ),
+                    )
+                    .toList();
+
+                // Month‑over‑month change
+                String changeText = 'No previous data';
+                bool isPositive = true;
+                if (_selectedMonthKey != null && months.isNotEmpty) {
+                  final idx = months.indexOf(_selectedMonthKey!);
+                  final current = monthTotals[_selectedMonthKey!] ?? 0;
+                  if (idx > 0) {
+                    final prevKey = months[idx - 1];
+                    final prev = monthTotals[prevKey] ?? 0;
+                    if (prev <= 0) {
+                      changeText = 'New period';
+                      isPositive = true;
+                    } else {
+                      final diff = current - prev;
+                      final percent = (diff / prev) * 100;
+                      isPositive = percent >= 0;
+                      changeText =
+                          '${percent.toStringAsFixed(1)}% than previous month';
+                    }
+                  } else {
+                    changeText = 'First month of activity';
+                  }
+                }
+
+                return Column(
+                  children: [
+                    // Main content
+                    Expanded(
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(
+                          AppTheme.spacingL,
+                          AppTheme.spacingL,
+                          AppTheme.spacingL,
+                          AppTheme.spacingM,
                         ),
-                        const SizedBox(width: AppTheme.spacingM),
-                        // Statistics cards
-                        Expanded(
-                          child: Column(
-                            children: [
-                              EarningsStatCard(
-                                icon: Icons.grid_view,
-                                iconColor: Colors.amber,
-                                label: 'Total Delivery',
-                                value: '1622',
-                              ),
-                              const SizedBox(height: AppTheme.spacingM),
-                              EarningsStatCard(
-                                icon: Icons.access_time,
-                                iconColor: Colors.red,
-                                label: 'On time Delivery',
-                                value: '87%',
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppTheme.spacingXL),
-                    // Profit Yearly section
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: RichText(
-                            text: TextSpan(
-                              style: AppTextStyles.headlineMedium.copyWith(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'My Earnings',
+                              style: AppTextStyles.headlineLarge.copyWith(
                                 color: ThemeHelper.getTextPrimaryColor(context),
                                 fontWeight: FontWeight.bold,
                               ),
+                            ),
+                            const SizedBox(height: AppTheme.spacingL),
+                            Row(
                               children: [
-                                const TextSpan(text: 'profit Yearly '),
-                                TextSpan(
-                                  text: '(28%)',
-                                  style: AppTextStyles.headlineMedium.copyWith(
-                                    color: ThemeHelper.getTextSecondaryColor(context),
-                                    fontWeight: FontWeight.normal,
+                                Expanded(
+                                  flex: 2,
+                                  child: EarningsTotalCard(
+                                    label: 'Total',
+                                    amount:
+                                        '\$${totalEarnings.toStringAsFixed(2)}',
+                                    changeText: changeText,
+                                    isPositive: isPositive,
+                                  ),
+                                ),
+                                const SizedBox(width: AppTheme.spacingM),
+                                Expanded(
+                                  child: Column(
+                                    children: [
+                                      EarningsStatCard(
+                                        icon: Icons.grid_view,
+                                        iconColor: Colors.amber,
+                                        label: 'Total Delivery',
+                                        value: '$totalDeliveries',
+                                      ),
+                                      const SizedBox(
+                                          height: AppTheme.spacingM),
+                                      EarningsStatCard(
+                                        icon: Icons.access_time,
+                                        iconColor: Colors.red,
+                                        label: 'On time Delivery',
+                                        value:
+                                            '${onTimePercent.toStringAsFixed(0)}%',
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                        // Action buttons
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: () {
-                                // Handle chart view
-                              },
-                              icon: Icon(
-                                Icons.bar_chart,
-                                color: ThemeHelper.getTextSecondaryColor(context),
-                                size: 20,
-                              ),
-                              style: IconButton.styleFrom(
-                                backgroundColor: ThemeHelper.getSurfaceColor(context),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                            const SizedBox(height: AppTheme.spacingXL),
+                            Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: RichText(
+                                    text: TextSpan(
+                                      style: AppTextStyles.headlineMedium
+                                          .copyWith(
+                                        color: ThemeHelper.getTextPrimaryColor(
+                                            context),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      children: [
+                                        const TextSpan(
+                                            text: 'Profit Overview '),
+                                        TextSpan(
+                                          text: totalEarnings > 0
+                                              ? '(${changeText.split(' ').first})'
+                                              : '(0%)',
+                                          style: AppTextStyles.headlineMedium
+                                              .copyWith(
+                                            color: ThemeHelper
+                                                .getTextSecondaryColor(
+                                                    context),
+                                            fontWeight: FontWeight.normal,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: AppTheme.spacingL),
+                            if (months.isNotEmpty)
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: months.map((monthKey) {
+                                    final parts = monthKey.split('-');
+                                    final m = int.parse(parts[0]);
+                                    final y = parts[1];
+                                    const labels = [
+                                      'Jan',
+                                      'Feb',
+                                      'Mar',
+                                      'Apr',
+                                      'May',
+                                      'Jun',
+                                      'Jul',
+                                      'Aug',
+                                      'Sep',
+                                      'Oct',
+                                      'Nov',
+                                      'Dec'
+                                    ];
+                                    final label =
+                                        '${labels[m - 1]} $y'; // e.g. Jan 2026
+                                    return Padding(
+                                      padding: const EdgeInsets.only(
+                                          right: AppTheme.spacingS),
+                                      child: MonthFilterButton(
+                                        month: label,
+                                        isSelected:
+                                            _selectedMonthKey == monthKey,
+                                        onTap: () => setState(
+                                            () => _selectedMonthKey =
+                                                monthKey),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              )
+                            else
+                              Text(
+                                'No earnings yet.',
+                                style: AppTextStyles.bodyMedium.copyWith(
+                                  color: ThemeHelper
+                                      .getTextSecondaryColor(context),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: AppTheme.spacingS),
-                            IconButton(
-                              onPressed: () {
-                                // Handle maximize
-                              },
-                              icon: Icon(
-                                Icons.open_in_full,
-                                color: ThemeHelper.getTextSecondaryColor(context),
-                                size: 20,
+                            const SizedBox(height: AppTheme.spacingL),
+                            if (chartData.isNotEmpty &&
+                                _selectedMonthKey != null)
+                              AnimatedBarChart(
+                                data: chartData,
+                                selectedMonth: _selectedMonthKey!,
                               ),
-                              style: IconButton.styleFrom(
-                                backgroundColor: ThemeHelper.getSurfaceColor(context),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                            const SizedBox(height: AppTheme.spacingXL),
+                            Text(
+                              'Recent Shipment',
+                              style: AppTextStyles.headlineMedium.copyWith(
+                                color: ThemeHelper.getTextPrimaryColor(context),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: AppTheme.spacingM),
+                            if (deliveredOrders.isEmpty)
+                              Text(
+                                'No completed deliveries yet.',
+                                style: AppTextStyles.bodyMedium.copyWith(
+                                  color: ThemeHelper
+                                      .getTextSecondaryColor(context),
                                 ),
+                              )
+                            else
+                              Column(
+                                children: deliveredOrders
+                                    .take(5)
+                                    .map(
+                                      (order) => ListTile(
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 0,
+                                          vertical: 4,
+                                        ),
+                                        title: Text(
+                                          'Order #${order.orderNumber}',
+                                          style: AppTextStyles.bodyMedium
+                                              .copyWith(
+                                            color: ThemeHelper
+                                                .getTextPrimaryColor(context),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        subtitle: Text(
+                                          order.deliveryAddress.city,
+                                          style: AppTextStyles.bodySmall
+                                              .copyWith(
+                                            color: ThemeHelper
+                                                .getTextSecondaryColor(
+                                                    context),
+                                          ),
+                                        ),
+                                        trailing: Text(
+                                          '\$${order.total.toStringAsFixed(2)}',
+                                          style: AppTextStyles.bodyMedium
+                                              .copyWith(
+                                            color: ThemeHelper
+                                                .getTextPrimaryColor(context),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
                               ),
-                            ),
+                            const SizedBox(height: AppTheme.spacingL),
                           ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: AppTheme.spacingL),
-                    // Month filters
-                    Row(
-                      children: [
-                        MonthFilterButton(
-                          month: 'Jan',
-                          isSelected: _selectedMonth == 'Jan',
-                          onTap: () => setState(() => _selectedMonth = 'Jan'),
-                        ),
-                        const SizedBox(width: AppTheme.spacingS),
-                        MonthFilterButton(
-                          month: 'Feb',
-                          isSelected: _selectedMonth == 'Feb',
-                          onTap: () => setState(() => _selectedMonth = 'Feb'),
-                        ),
-                        const SizedBox(width: AppTheme.spacingS),
-                        MonthFilterButton(
-                          month: 'Mar',
-                          isSelected: _selectedMonth == 'Mar',
-                          onTap: () => setState(() => _selectedMonth = 'Mar'),
-                        ),
-                        const SizedBox(width: AppTheme.spacingS),
-                        MonthFilterButton(
-                          month: 'Apr',
-                          isSelected: _selectedMonth == 'Apr',
-                          onTap: () => setState(() => _selectedMonth = 'Apr'),
-                        ),
-                        const SizedBox(width: AppTheme.spacingS),
-                        MonthFilterButton(
-                          month: 'May',
-                          isSelected: _selectedMonth == 'May',
-                          onTap: () => setState(() => _selectedMonth = 'May'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppTheme.spacingL),
-                    // Animated bar chart
-                    AnimatedBarChart(
-                      data: _chartData,
-                      selectedMonth: _selectedMonth,
-                    ),
-                    const SizedBox(height: AppTheme.spacingXL),
-                    // Recent Shipment section
-                    Text(
-                      'Recent Shipment',
-                      style: AppTextStyles.headlineMedium.copyWith(
-                        color: ThemeHelper.getTextPrimaryColor(context),
-                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: AppTheme.spacingM),
-                    // Shipment list
-                    EarningsShipmentItem(
-                      label: 'Parcel Delivery',
-                      origin: 'Lekki',
-                      destination: 'Gbagada',
-                      amount: '\$450.30',
-                      status: 'Received',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const DeliveryCompletionScreen(),
-                          ),
-                        );
+                    // Bottom Navigation Bar
+                    DeliveryBottomNavBar(
+                      currentIndex: _currentNavIndex,
+                      notificationCount: 2,
+                      onTap: (index) {
+                        if (index == 0) {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (context) => const DeliveryHomeScreen(),
+                            ),
+                          );
+                        } else if (index == 1) {
+                          setState(() {
+                            _currentNavIndex = index;
+                          });
+                        } else if (index == 2) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const PickupTaskScreen(),
+                            ),
+                          );
+                        } else if (index == 3) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const NotificationsScreen(),
+                            ),
+                          );
+                        } else if (index == 4) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const DeliveryProfileScreen(),
+                            ),
+                          );
+                        }
                       },
                     ),
-                    EarningsShipmentItem(
-                      label: 'Parcel Delivery',
-                      origin: 'Lekki',
-                      destination: 'Gbagada',
-                      amount: '\$450.30',
-                      status: 'Received',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const DeliveryCompletionScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    EarningsShipmentItem(
-                      label: 'Parcel Delivery',
-                      origin: 'Lekki',
-                      destination: 'Gbagada',
-                      amount: '\$450.30',
-                      status: 'Received',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const DeliveryCompletionScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: AppTheme.spacingL),
                   ],
-                ),
-              ),
-            ),
-            // Bottom Navigation Bar
-            DeliveryBottomNavBar(
-              currentIndex: _currentNavIndex,
-              notificationCount: 2,
-              onTap: (index) {
-                if (index == 0) {
-                  // Navigate back to Home screen
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (context) => const DeliveryHomeScreen(),
-                    ),
-                  );
-                } else if (index == 1) {
-                  // Already on Earnings screen
-                  setState(() {
-                    _currentNavIndex = index;
-                  });
-                } else if (index == 2) {
-                  // Navigate to Pickup Task screen (truck icon)
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const PickupTaskScreen(),
-                    ),
-                  );
-                } else if (index == 3) {
-                  // Navigate to Notifications screen
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const NotificationsScreen(),
-                    ),
-                  );
-                } else if (index == 4) {
-                  // Navigate to Profile screen
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const DeliveryProfileScreen(),
-                    ),
-                  );
-                } else {
-                  setState(() {
-                    _currentNavIndex = index;
-                  });
-                }
+                );
               },
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

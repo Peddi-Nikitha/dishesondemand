@@ -4,6 +4,8 @@ import '../theme/app_text_styles.dart';
 import '../theme/app_theme.dart';
 import '../utils/theme_helper.dart';
 import '../screens/auth/sign_in_screen.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 /// Animated logout confirmation dialog
 class LogoutDialog extends StatefulWidget {
@@ -51,7 +53,13 @@ class _LogoutDialogState extends State<LogoutDialog>
   }
 
   void _handleLogout() {
-    _controller.reverse().then((_) {
+    _controller.reverse().then((_) async {
+      // Perform Firebase sign out via AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.signOut();
+
+      if (!mounted) return;
+
       Navigator.of(context).pop(); // Close dialog
       // Navigate to sign in screen and clear navigation stack
       Navigator.of(context).pushAndRemoveUntil(

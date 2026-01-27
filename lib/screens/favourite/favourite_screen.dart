@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
 import '../../widgets/favourite_product_card.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../cart/shopping_cart_screen.dart';
-import '../../models/menu_item.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/product_provider.dart';
+import '../../providers/cart_provider.dart';
 
-/// Production-ready favourite screen matching the exact design
+/// Production-ready favourite screen with Firestore integration
 class FavouriteScreen extends StatefulWidget {
   const FavouriteScreen({super.key});
 
@@ -16,16 +19,6 @@ class FavouriteScreen extends StatefulWidget {
 }
 
 class _FavouriteScreenState extends State<FavouriteScreen> {
-  // Helper method to get image URL from MenuData
-  String _getImageUrl(String itemName) {
-    final allItems = MenuData.allItems;
-    final item = allItems.firstWhere(
-      (item) => item.name == itemName,
-      orElse: () => allItems.first,
-    );
-    return item.imageUrl;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -37,133 +30,149 @@ class _FavouriteScreenState extends State<FavouriteScreen> {
             _buildHeader(),
             // Main Content - Product Grid
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppTheme.spacingM),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 2x2 Grid
-                    GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: AppTheme.spacingM,
-                      mainAxisSpacing: AppTheme.spacingM,
-                      childAspectRatio: 0.75,
+              child: Consumer3<AuthProvider, ProductProvider, CartProvider>(
+                builder: (context, authProvider, productProvider, cartProvider, child) {
+                  // Get favorite product IDs from auth provider
+                  final favoriteIds = authProvider.favorites;
+                  
+                  if (favoriteIds.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.favorite_border,
+                            size: 80,
+                            color: ThemeHelper.getTextSecondaryColor(context),
+                          ),
+                          const SizedBox(height: AppTheme.spacingL),
+                          Text(
+                            'No favorites yet',
+                            style: AppTextStyles.titleMedium.copyWith(
+                              color: ThemeHelper.getTextPrimaryColor(context),
+                            ),
+                          ),
+                          const SizedBox(height: AppTheme.spacingS),
+                          Text(
+                            'Add products to your favorites',
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: ThemeHelper.getTextSecondaryColor(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  // Get products that are in favorites
+                  final favoriteProducts = productProvider.products
+                      .where((product) => favoriteIds.contains(product.id))
+                      .toList();
+
+                  if (favoriteProducts.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.favorite_border,
+                            size: 80,
+                            color: ThemeHelper.getTextSecondaryColor(context),
+                          ),
+                          const SizedBox(height: AppTheme.spacingL),
+                          Text(
+                            'Loading favorites...',
+                            style: AppTextStyles.titleMedium.copyWith(
+                              color: ThemeHelper.getTextPrimaryColor(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(AppTheme.spacingM),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        FavouriteProductCard(
-                          imageUrl: _getImageUrl('Grilled Chicken'),
-                          title: 'Grilled Chicken',
-                          quantity: '1 serving',
-                          currentPrice: '\$18',
-                          originalPrice: '\$22',
-                          isFavorite: true,
-                          onFavoriteTap: () {
-                            // Handle unfavorite
-                          },
-                          onAddTap: () {
-                            // Handle add to cart
-                          },
-                        ),
-                        FavouriteProductCard(
-                          imageUrl: _getImageUrl('Premium Steak'),
-                          title: 'Premium Steak',
-                          quantity: '1 serving',
-                          currentPrice: '\$32',
-                          originalPrice: '\$38',
-                          isFavorite: true,
-                          onFavoriteTap: () {
-                            // Handle unfavorite
-                          },
-                          onAddTap: () {
-                            // Handle add to cart
-                          },
-                        ),
-                        FavouriteProductCard(
-                          imageUrl: _getImageUrl('Seafood Platter'),
-                          title: 'Seafood Platter',
-                          quantity: '1 serving',
-                          currentPrice: '\$28',
-                          originalPrice: '\$35',
-                          isFavorite: true,
-                          onFavoriteTap: () {
-                            // Handle unfavorite
-                          },
-                          onAddTap: () {
-                            // Handle add to cart
-                          },
-                        ),
-                        FavouriteProductCard(
-                          imageUrl: _getImageUrl('Creamy Pasta'),
-                          title: 'Creamy Pasta',
-                          quantity: '1 serving',
-                          currentPrice: '\$15',
-                          originalPrice: '\$18',
-                          isFavorite: true,
-                          onFavoriteTap: () {
-                            // Handle unfavorite
-                          },
-                          onAddTap: () {
-                            // Handle add to cart
+                        // 2x2 Grid
+                        GridView.builder(
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: AppTheme.spacingM,
+                            mainAxisSpacing: AppTheme.spacingM,
+                            childAspectRatio: 0.75,
+                          ),
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: favoriteProducts.length,
+                          itemBuilder: (context, index) {
+                            final product = favoriteProducts[index];
+
+                            return FavouriteProductCard(
+                              imageUrl: product.imageUrl,
+                              title: product.name,
+                              quantity: product.quantity,
+                              currentPrice: product.formattedCurrentPrice,
+                              originalPrice: product.formattedOriginalPrice,
+                              isFavorite: true,
+                              onFavoriteTap: () async {
+                                final success = await authProvider.removeFavorite(product.id);
+                                if (success && mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('${product.name} removed from favorites'),
+                                      duration: const Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
+                              },
+                              onAddTap: () {
+                                cartProvider.addItem(product);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('${product.name} added to cart'),
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                              },
+                            );
                           },
                         ),
-                        FavouriteProductCard(
-                          imageUrl: _getImageUrl('Margherita Pizza'),
-                          title: 'Margherita Pizza',
-                          quantity: '1 large',
-                          currentPrice: '\$20',
-                          originalPrice: '\$24',
-                          isFavorite: true,
-                          onFavoriteTap: () {
-                            // Handle unfavorite
-                          },
-                          onAddTap: () {
-                            // Handle add to cart
-                          },
-                        ),
-                        FavouriteProductCard(
-                          imageUrl: _getImageUrl('Creamy Soup'),
-                          title: 'Creamy Soup',
-                          quantity: '1 bowl',
-                          currentPrice: '\$10',
-                          originalPrice: '\$12',
-                          isFavorite: true,
-                          onFavoriteTap: () {
-                            // Handle unfavorite
-                          },
-                          onAddTap: () {
-                            // Handle add to cart
-                          },
-                        ),
+                        // Bottom padding
+                        const SizedBox(height: AppTheme.spacingXL),
                       ],
                     ),
-                    // Bottom padding
-                    const SizedBox(height: AppTheme.spacingXL),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
             // Bottom Navigation Bar
-            CustomBottomNavBar(
-              currentIndex: 2, // Favourite is index 2
-              cartItemCount: 3,
-              onTap: (index) {
-                if (index == 0) {
-                  // Navigate to Home
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                } else if (index == 1) {
-                  // Navigate to Cart
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const ShoppingCartScreen(),
-                    ),
-                  );
-                } else if (index == 2) {
-                  // Already on Favourite screen - do nothing
-                } else {
-                  // Handle other navigation items
-                  Navigator.of(context).pop();
-                }
+            Consumer<CartProvider>(
+              builder: (context, cartProvider, child) {
+                return CustomBottomNavBar(
+                  currentIndex: 2, // Favourite is index 2
+                  cartItemCount: cartProvider.itemCount,
+                  onTap: (index) {
+                    if (index == 0) {
+                      // Navigate to Home
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    } else if (index == 1) {
+                      // Navigate to Cart
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const ShoppingCartScreen(),
+                        ),
+                      );
+                    } else if (index == 2) {
+                      // Already on Favourite screen - do nothing
+                    } else {
+                      // Handle other navigation items
+                      Navigator.of(context).pop();
+                    }
+                  },
+                );
               },
             ),
           ],
@@ -215,4 +224,3 @@ class _FavouriteScreenState extends State<FavouriteScreen> {
     );
   }
 }
-

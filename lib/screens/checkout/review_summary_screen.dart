@@ -1,134 +1,153 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
 import '../../widgets/cart_item_card.dart';
+import '../../providers/cart_provider.dart';
+import '../../models/user_model.dart';
 import 'payment_methods_screen.dart';
-import '../../models/menu_item.dart';
 
-/// Review Summary screen showing order details and summary
+/// Review Summary screen showing order details and summary with Firestore integration
 class ReviewSummaryScreen extends StatefulWidget {
-  const ReviewSummaryScreen({super.key});
+  final AddressModel selectedAddress;
+
+  const ReviewSummaryScreen({
+    super.key,
+    required this.selectedAddress,
+  });
 
   @override
   State<ReviewSummaryScreen> createState() => _ReviewSummaryScreenState();
 }
 
 class _ReviewSummaryScreenState extends State<ReviewSummaryScreen> {
-  int _pizzaQuantity = 1;
-  int _pastaQuantity = 1;
-
-  // Helper method to get image URL from MenuData
-  static String _getImageUrl(String itemName) {
-    final allItems = MenuData.allItems;
-    final item = allItems.firstWhere(
-      (item) => item.name == itemName,
-      orElse: () => allItems.first,
-    );
-    return item.imageUrl;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ThemeHelper.getBackgroundColor(context),
       body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            _buildHeader(),
-            // Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppTheme.spacingM),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Dish List
-                    CartItemCard(
-                      imageUrl: _getImageUrl('Margherita Pizza'),
-                      title: 'Margherita Pizza',
-                      quantity: '1 large',
-                      currentPrice: '\$20',
-                      originalPrice: '\$24',
-                      discountBadge: '35% OFF',
-                      itemQuantity: _pizzaQuantity,
-                      onRemove: () {
-                        // Handle remove
-                      },
-                      onDecrease: () {
-                        if (_pizzaQuantity > 1) {
-                          setState(() {
-                            _pizzaQuantity--;
-                          });
-                        }
-                      },
-                      onIncrease: () {
-                        setState(() {
-                          _pizzaQuantity++;
-                        });
-                      },
+        child: Consumer<CartProvider>(
+          builder: (context, cartProvider, child) {
+            if (cartProvider.items.isEmpty) {
+              return Column(
+                children: [
+                  _buildHeader(),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        'Cart is empty',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: ThemeHelper.getTextSecondaryColor(context),
+                        ),
+                      ),
                     ),
-                    CartItemCard(
-                      imageUrl: _getImageUrl('Creamy Pasta'),
-                      title: 'Creamy Pasta',
-                      quantity: '1 serving',
-                      currentPrice: '\$15',
-                      originalPrice: '\$18',
-                      discountBadge: '35% OFF',
-                      itemQuantity: _pastaQuantity,
-                      onRemove: () {
-                        // Handle remove
-                      },
-                      onDecrease: () {
-                        if (_pastaQuantity > 1) {
-                          setState(() {
-                            _pastaQuantity--;
-                          });
-                        }
-                      },
-                      onIncrease: () {
-                        setState(() {
-                          _pastaQuantity++;
-                        });
-                      },
+                  ),
+                ],
+              );
+            }
+
+            final now = DateTime.now();
+            final orderDate = '${_getMonthName(now.month)} ${now.day}, ${now.year} | ${_formatTime(now)}';
+            final expectedDelivery = now.add(const Duration(days: 1));
+            final expectedDeliveryDate = '${_getMonthName(expectedDelivery.month)} ${expectedDelivery.day}, ${expectedDelivery.year}';
+
+            return Column(
+              children: [
+                // Header
+                _buildHeader(),
+                // Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(AppTheme.spacingM),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Cart Items List
+                        ...cartProvider.items.map((cartItem) {
+                          final product = cartItem.product;
+                          final discountPercent = product.originalPrice != null &&
+                                  product.originalPrice! > product.currentPrice
+                              ? ((product.originalPrice! - product.currentPrice) /
+                                      product.originalPrice! *
+                                      100)
+                                  .toStringAsFixed(0)
+                              : '0';
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: AppTheme.spacingM),
+                            child: CartItemCard(
+                              imageUrl: product.imageUrl,
+                              title: product.name,
+                              quantity: product.quantity,
+                              currentPrice: product.formattedCurrentPrice,
+                              originalPrice: product.formattedOriginalPrice,
+                              discountBadge: discountPercent != '0' ? '$discountPercent% OFF' : '',
+                              itemQuantity: cartItem.quantity,
+                              onRemove: () {
+                                cartProvider.removeItem(cartItem.productId);
+                              },
+                              onDecrease: () {
+                                cartProvider.decreaseQuantity(cartItem.productId);
+                              },
+                              onIncrease: () {
+                                cartProvider.increaseQuantity(cartItem.productId);
+                              },
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: AppTheme.spacingM),
+                        // Order Information Section
+                        _buildDivider(),
+                        const SizedBox(height: AppTheme.spacingM),
+                        _buildOrderInfoRow('Order Date', orderDate),
+                        const SizedBox(height: AppTheme.spacingM),
+                        _buildOrderInfoRow('Expected Delivery Date', expectedDeliveryDate),
+                        const SizedBox(height: AppTheme.spacingM),
+                        // Price Breakdown Section
+                        _buildDivider(),
+                        const SizedBox(height: AppTheme.spacingM),
+                        _buildPriceRow('Sub Total:', '\$${cartProvider.subtotal.toStringAsFixed(2)}'),
+                        const SizedBox(height: AppTheme.spacingM),
+                        _buildPriceRow('Shipping:', '\$${cartProvider.shipping.toStringAsFixed(2)}'),
+                        const SizedBox(height: AppTheme.spacingM),
+                        _buildPriceRow('Tax:', '\$0.00'),
+                        const SizedBox(height: AppTheme.spacingM),
+                        if (cartProvider.discount > 0)
+                          _buildPriceRow('Discount:', '${cartProvider.discountPercentage.toStringAsFixed(0)}%'),
+                        if (cartProvider.discount > 0) const SizedBox(height: AppTheme.spacingM),
+                        _buildDivider(),
+                        const SizedBox(height: AppTheme.spacingM),
+                        _buildTotalRow('Total Amount:', '\$${cartProvider.total.toStringAsFixed(2)}'),
+                        const SizedBox(height: AppTheme.spacingXL),
+                      ],
                     ),
-                    const SizedBox(height: AppTheme.spacingM),
-                    // Order Information Section
-                    _buildDivider(),
-                    const SizedBox(height: AppTheme.spacingM),
-                    _buildOrderInfoRow('Order Date', 'Des 18, 2025 | 10:00 AM'),
-                    const SizedBox(height: AppTheme.spacingM),
-                    _buildOrderInfoRow('Promo code', 'FR1254HGGWE'),
-                    const SizedBox(height: AppTheme.spacingM),
-                    _buildOrderInfoRow('Expected Delivery Date', 'Des 19, 2025'),
-                    const SizedBox(height: AppTheme.spacingM),
-                    // Price Breakdown Section
-                    _buildDivider(),
-                    const SizedBox(height: AppTheme.spacingM),
-                    _buildPriceRow('Sub Total:', '\$66.00'),
-                    const SizedBox(height: AppTheme.spacingM),
-                    _buildPriceRow('Shipping:', '\$10.00'),
-                    const SizedBox(height: AppTheme.spacingM),
-                    _buildPriceRow('Tax:', '\$00.00'),
-                    const SizedBox(height: AppTheme.spacingM),
-                    _buildPriceRow('Discount:', '10%'),
-                    const SizedBox(height: AppTheme.spacingM),
-                    _buildDivider(),
-                    const SizedBox(height: AppTheme.spacingM),
-                    _buildTotalRow('Total Amount:', '\$68.40'),
-                    const SizedBox(height: AppTheme.spacingXL),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            // Download Button
-            _buildDownloadButton(),
-          ],
+                // Download Button
+                _buildDownloadButton(cartProvider),
+              ],
+            );
+          },
         ),
       ),
     );
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return months[month - 1];
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final hour = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final period = dateTime.hour < 12 ? 'AM' : 'PM';
+    return '$hour:$minute $period';
   }
 
   Widget _buildHeader() {
@@ -252,7 +271,7 @@ class _ReviewSummaryScreenState extends State<ReviewSummaryScreen> {
     );
   }
 
-  Widget _buildDownloadButton() {
+  Widget _buildDownloadButton(CartProvider cartProvider) {
     return Container(
       padding: const EdgeInsets.all(AppTheme.spacingM),
       decoration: BoxDecoration(
@@ -272,23 +291,28 @@ class _ReviewSummaryScreenState extends State<ReviewSummaryScreen> {
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const PaymentMethodsScreen(),
-                ),
-              );
-            },
+            onPressed: cartProvider.items.isEmpty
+                ? null
+                : () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => PaymentMethodsScreen(
+                          selectedAddress: widget.selectedAddress,
+                        ),
+                      ),
+                    );
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: ThemeHelper.getPrimaryColor(context),
               foregroundColor: AppColors.textOnPrimary,
+              disabledBackgroundColor: ThemeHelper.getTextSecondaryColor(context),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppTheme.radiusM),
               ),
               elevation: 0,
             ),
             child: Text(
-              'Download E-Receipt',
+              'Continue to Payment',
               style: AppTextStyles.buttonLarge.copyWith(
                 color: AppColors.textOnPrimary,
                 fontWeight: FontWeight.w600,
@@ -330,4 +354,3 @@ class _DashedLinePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
-
