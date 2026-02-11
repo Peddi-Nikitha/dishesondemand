@@ -6,7 +6,7 @@ import 'offer_banner.dart';
 /// Carousel widget for offer banners with auto-scroll
 class OfferCarousel extends StatefulWidget {
   final List<Map<String, String>> banners;
-  final VoidCallback? onButtonTap;
+  final Function(String)? onButtonTap;
 
   const OfferCarousel({
     super.key,
@@ -138,6 +138,7 @@ class _OfferCarouselState extends State<OfferCarousel> {
                     currentIndex: _currentIndex,
                     totalIndicators: widget.banners.length,
                     onButtonTap: widget.onButtonTap,
+                    productSearchTerm: banner['productSearchTerm'],
                   );
                 },
               ),

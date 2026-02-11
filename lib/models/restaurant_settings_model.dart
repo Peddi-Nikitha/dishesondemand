@@ -18,7 +18,7 @@ class RestaurantSettingsModel {
     required this.email,
     required this.address,
     this.logoUrl,
-    this.currency = '\$',
+    this.currency = '£',
     this.generalDiscount = 0.0,
     this.deliveryEnabled = false,
     this.orderReservationEnabled = false,

@@ -1,4 +1,4 @@
-# new_ui
+# Yumzo
 
 A new Flutter project.
 

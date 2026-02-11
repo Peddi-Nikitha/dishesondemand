@@ -16,11 +16,13 @@ import '../../widgets/logout_dialog.dart';
 import '../cart/shopping_cart_screen.dart';
 import '../favourite/favourite_screen.dart';
 import '../orders/my_orders_screen.dart';
-import '../delivery/delivery_welcome_screen.dart';
-import '../auth/supermarket_login_screen.dart';
+// import '../auth/supermarket_login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'addresses_screen.dart';
 import 'payment_methods_screen.dart';
+import 'password_manager_screen.dart';
+import 'help_center_screen.dart';
+import 'privacy_policy_screen.dart';
 
 /// Production-ready my account screen matching the exact design
 class MyAccountScreen extends StatefulWidget {
@@ -119,28 +121,17 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                         );
                       },
                     ),
-                    AccountOptionItem(
-                      icon: Icons.local_shipping,
-                      title: 'Delivery account',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const DeliveryWelcomeScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    AccountOptionItem(
-                      icon: Icons.point_of_sale,
-                      title: 'Supermarket Dashboard (POS System)',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const SupermarketLoginScreen(),
-                          ),
-                        );
-                      },
-                    ),
+                    // AccountOptionItem(
+                    //   icon: Icons.point_of_sale,
+                    //   title: 'Supermarket Dashboard (POS System)',
+                    //   onTap: () {
+                    //     Navigator.of(context).push(
+                    //       MaterialPageRoute(
+                    //         builder: (context) => const SupermarketLoginScreen(),
+                    //       ),
+                    //     );
+                    //   },
+                    // ),
                     const SizedBox(height: AppTheme.spacingL),
                     // Settings Section
                     Text(
@@ -155,7 +146,11 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                       icon: Icons.lock,
                       title: 'Password Manager',
                       onTap: () {
-                        // Handle password manager
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const PasswordManagerScreen(),
+                          ),
+                        );
                       },
                     ),
                     SettingsOptionItem(
@@ -166,20 +161,40 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                         setState(() {
                           _notificationsEnabled = value;
                         });
+                        // Save notification preference
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              value
+                                  ? 'Notifications enabled'
+                                  : 'Notifications disabled',
+                            ),
+                            duration: const Duration(seconds: 1),
+                            backgroundColor: AppColors.primary,
+                          ),
+                        );
                       },
                     ),
                     SettingsOptionItem(
                       icon: Icons.help_outline,
                       title: 'Help Center',
                       onTap: () {
-                        // Handle help center
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const HelpCenterScreen(),
+                          ),
+                        );
                       },
                     ),
                     SettingsOptionItem(
                       icon: Icons.privacy_tip,
                       title: 'Privacy Policy',
                       onTap: () {
-                        // Handle privacy policy
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const PrivacyPolicyScreen(),
+                          ),
+                        );
                       },
                     ),
                     const SizedBox(height: AppTheme.spacingM),

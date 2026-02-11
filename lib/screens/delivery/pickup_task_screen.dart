@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -66,20 +67,22 @@ class PickupTaskScreen extends StatelessWidget {
 
                 final orders = snapshot.data ?? [];
 
-                // Active pickup order: assigned or picked_up
+                // Active pickup order: assigned, picked_up, or in_transit
                 OrderModel? activeOrder;
                 if (orders.isNotEmpty) {
                   activeOrder = orders.firstWhere(
                     (order) =>
                         order.status == AppConstants.orderStatusAssigned ||
-                        order.status == AppConstants.orderStatusPickedUp,
+                        order.status == AppConstants.orderStatusPickedUp ||
+                        order.status == AppConstants.orderStatusInTransit,
                     orElse: () => orders.first,
                   );
                 }
 
                 if (activeOrder == null ||
                     (activeOrder.status != AppConstants.orderStatusAssigned &&
-                        activeOrder.status != AppConstants.orderStatusPickedUp)) {
+                        activeOrder.status != AppConstants.orderStatusPickedUp &&
+                        activeOrder.status != AppConstants.orderStatusInTransit)) {
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(AppTheme.spacingL),
@@ -104,44 +107,73 @@ class PickupTaskScreen extends StatelessWidget {
                 final customerName = authProvider.userModel?.name ?? 'Customer';
                 final customerPhone = authProvider.userModel?.phone ?? 'N/A';
 
+                // Customer (user) coordinates from the delivery address, if present
+                final coords = activeOrder.deliveryAddress.coordinates;
+
                 return Column(
                   children: [
-                    // Map section (top 2/3) – still using placeholder image
+                    // Map section (top 2/3)
                     Expanded(
                       flex: 2,
-                      child: Stack(
-                        children: [
-                          Container(
-                            width: double.infinity,
-                            height: double.infinity,
-                            decoration: BoxDecoration(
-                              color: ThemeHelper.getSurfaceColor(context),
-                            ),
-                            child: Image.network(
-                              'https://images.unsplash.com/photo-1524661135-423995f22d0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
-                              fit: BoxFit.cover,
-                              headers: const {
-                                'User-Agent':
-                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: ThemeHelper.getSurfaceColor(context),
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.map,
-                                      size: 100,
-                                      color:
-                                          ThemeHelper.getTextSecondaryColor(context),
-                                    ),
+                      child: (coords != null &&
+                              coords.containsKey('lat') &&
+                              coords.containsKey('lng'))
+                          ? GoogleMap(
+                              initialCameraPosition: CameraPosition(
+                                target: LatLng(
+                                  coords['lat']!,
+                                  coords['lng']!,
+                                ),
+                                zoom: 15,
+                              ),
+                              markers: {
+                                Marker(
+                                  markerId: const MarkerId('customer'),
+                                  position: LatLng(
+                                    coords['lat']!,
+                                    coords['lng']!,
                                   ),
-                                );
+                                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                                    BitmapDescriptor.hueOrange,
+                                  ),
+                                ),
                               },
+                              myLocationButtonEnabled: false,
+                              zoomControlsEnabled: false,
+                            )
+                          : Stack(
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: ThemeHelper.getSurfaceColor(context),
+                                  ),
+                                  child: Image.network(
+                                    'https://images.unsplash.com/photo-1524661135-423995f22d0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+                                    fit: BoxFit.cover,
+                                    headers: const {
+                                      'User-Agent':
+                                          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                    },
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        color: ThemeHelper.getSurfaceColor(context),
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.map,
+                                            size: 100,
+                                            color:
+                                                ThemeHelper.getTextSecondaryColor(context),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                _buildMapMarkers(context),
+                              ],
                             ),
-                          ),
-                          _buildMapMarkers(context),
-                        ],
-                      ),
                     ),
                     // Information panel (bottom 1/3)
                     Expanded(
@@ -190,11 +222,25 @@ class PickupTaskScreen extends StatelessWidget {
                                 ],
                               ),
                               const SizedBox(height: AppTheme.spacingM),
-                              // Pickup location card (using delivery address for now)
+                              // Pickup / drop-off location card (customer address)
                               PickupLocationCard(
                                 address: _formatAddress(activeOrder),
-                                icon: Icons.shopping_cart,
+                                icon: Icons.location_on,
                               ),
+                              if (activeOrder.deliveryAddress.coordinates != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: AppTheme.spacingS,
+                                  ),
+                                  child: Text(
+                                    'Customer location: '
+                                    '${activeOrder.deliveryAddress.coordinates!['lat']?.toStringAsFixed(4)}, '
+                                    '${activeOrder.deliveryAddress.coordinates!['lng']?.toStringAsFixed(4)}',
+                                    style: AppTextStyles.bodySmall.copyWith(
+                                      color: ThemeHelper.getTextSecondaryColor(context),
+                                    ),
+                                  ),
+                                ),
                               const SizedBox(height: AppTheme.spacingM),
                               // Contact info card
                               ContactInfoCard(
@@ -215,24 +261,52 @@ class PickupTaskScreen extends StatelessWidget {
                                 height: 56,
                                 child: ElevatedButton(
                                   onPressed: () async {
-                                    // Mark order as picked up and go to completion screen
+                                    if (activeOrder == null) return;
+
+                                    // If order is still ASSIGNED, this button means
+                                    // "I've arrived at restaurant and picked up".
+                                    // If already PICKED_UP or IN_TRANSIT, treat as
+                                    // "Mark as done" and complete the delivery.
+                                    String nextStatus;
+                                    bool goToCompletion = false;
+
+                                    if (activeOrder.status ==
+                                        AppConstants.orderStatusAssigned) {
+                                      nextStatus =
+                                          AppConstants.orderStatusPickedUp;
+                                    } else {
+                                      nextStatus =
+                                          AppConstants.orderStatusDelivered;
+                                      goToCompletion = true;
+                                    }
+
                                     final success = await orderProvider
                                         .updateOrderStatus(
-                                      activeOrder!.id,
-                                      AppConstants.orderStatusPickedUp,
+                                      activeOrder.id,
+                                      nextStatus,
                                     );
 
                                     if (!context.mounted) return;
 
                                     if (success) {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              DeliveryCompletionScreen(
-                                            order: activeOrder!,
+                                      if (goToCompletion) {
+                                        // Navigate to completion screen with a local
+                                        // copy marked as delivered so UI matches.
+                                        Navigator.of(context).pushReplacement(
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                DeliveryCompletionScreen(
+                                              order: activeOrder!.copyWith(
+                                                status: AppConstants
+                                                    .orderStatusDelivered,
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      );
+                                        );
+                                      } else {
+                                        // For pickup step just return home.
+                                        Navigator.of(context).pop();
+                                      }
                                     } else {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(
@@ -250,13 +324,20 @@ class PickupTaskScreen extends StatelessWidget {
                                         ThemeHelper.getPrimaryColor(context),
                                     foregroundColor: AppColors.textOnPrimary,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(AppTheme.radiusM),
+                                      borderRadius: BorderRadius.circular(
+                                          AppTheme.radiusM),
                                     ),
                                     elevation: 0,
                                   ),
                                   child: Text(
-                                    "I've arrived",
+                                    activeOrder.status ==
+                                                AppConstants
+                                                    .orderStatusAssigned ||
+                                            activeOrder.status ==
+                                                AppConstants
+                                                    .orderStatusPickedUp
+                                        ? "I've arrived"
+                                        : "Mark as done",
                                     style: AppTextStyles.buttonLarge,
                                   ),
                                 ),

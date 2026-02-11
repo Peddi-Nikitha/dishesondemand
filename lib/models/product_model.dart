@@ -32,9 +32,9 @@ class ProductModel {
     required this.updatedAt,
   });
 
-  String get formattedCurrentPrice => '\$${currentPrice.toStringAsFixed(2)}';
+  String get formattedCurrentPrice => '£${currentPrice.toStringAsFixed(2)}';
   String get formattedOriginalPrice =>
-      originalPrice != null ? '\$${originalPrice!.toStringAsFixed(2)}' : '';
+      originalPrice != null ? '£${originalPrice!.toStringAsFixed(2)}' : '';
 
   // Convert to Firestore document
   Map<String, dynamic> toFirestore() {

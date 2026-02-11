@@ -125,3 +125,26 @@ echo CORS configuration applied!
 Once CORS is configured, restart your Flutter web app and try uploading images again. The CORS error should be resolved.
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

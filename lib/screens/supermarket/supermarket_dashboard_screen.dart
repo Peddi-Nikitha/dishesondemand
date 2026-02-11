@@ -11,6 +11,7 @@ import 'customers_screen.dart';
 import 'order_history_screen.dart';
 import 'settings_screen.dart';
 import 'add_edit_product_screen.dart';
+import '../../widgets/logout_dialog.dart';
 
 /// Supermarket Dashboard (POS System) Screen
 /// Matches the design with orange theme instead of green
@@ -216,7 +217,10 @@ class _SupermarketDashboardScreenState extends State<SupermarketDashboardScreen>
             label: 'Logout',
             isActive: false,
             onTap: () {
-              Navigator.of(context).pop();
+              showDialog(
+                context: context,
+                builder: (ctx) => const LogoutDialog(),
+              );
             },
           ),
           const SizedBox(height: AppTheme.spacingL),

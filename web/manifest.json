@@ -1,6 +1,6 @@
 {
-    "name": "new_ui",
-    "short_name": "new_ui",
+    "name": "Yumzo",
+    "short_name": "Yumzo",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -33,9 +33,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           Provider.of<AuthProvider>(context, listen: false);
       final notificationProvider =
           Provider.of<NotificationProvider>(context, listen: false);
-      final deliveryBoy = authProvider.deliveryBoyModel;
-      if (deliveryBoy != null) {
-        notificationProvider.setDeliveryBoyId(deliveryBoy.uid);
+      
+      // Initialize notifications based on user role
+      final userRole = authProvider.userRole;
+      if (userRole == 'delivery_boy') {
+        final deliveryBoy = authProvider.deliveryBoyModel;
+        if (deliveryBoy != null) {
+          notificationProvider.setDeliveryBoyId(deliveryBoy.uid);
+        }
+      } else if (userRole == 'user') {
+        final user = authProvider.userModel;
+        if (user != null) {
+          notificationProvider.setUserId(user.uid);
+        }
       }
     });
   }
@@ -102,46 +112,53 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         centerTitle: true,
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            // Main content
-            Expanded(
-              child: _buildContent(context, notificationProvider),
-            ),
-            // Bottom Navigation Bar
-            DeliveryBottomNavBar(
-              currentIndex: _currentNavIndex,
-              notificationCount: unreadCount,
-              onTap: (index) {
-                if (index == 0) {
-                  // Navigate to Home
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (context) => const DeliveryHomeScreen(),
-                    ),
-                  );
-                } else if (index == 2) {
-                  // Navigate to Pickup Task screen (truck icon)
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const PickupTaskScreen(),
-                    ),
-                  );
-                } else if (index == 4) {
-                  // Navigate to Profile screen
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const DeliveryProfileScreen(),
-                    ),
-                  );
-                } else {
-                  setState(() {
-                    _currentNavIndex = index;
-                  });
-                }
-              },
-            ),
-          ],
+        child: Consumer<AuthProvider>(
+          builder: (context, authProvider, _) {
+            final isDeliveryBoy = authProvider.userRole == 'delivery_boy';
+            
+            return Column(
+              children: [
+                // Main content
+                Expanded(
+                  child: _buildContent(context, notificationProvider),
+                ),
+                // Bottom Navigation Bar (only for delivery boys)
+                if (isDeliveryBoy)
+                  DeliveryBottomNavBar(
+                    currentIndex: _currentNavIndex,
+                    notificationCount: unreadCount,
+                    onTap: (index) {
+                      if (index == 0) {
+                        // Navigate to Home
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (context) => const DeliveryHomeScreen(),
+                          ),
+                        );
+                      } else if (index == 2) {
+                        // Navigate to Pickup Task screen (truck icon)
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const PickupTaskScreen(),
+                          ),
+                        );
+                      } else if (index == 4) {
+                        // Navigate to Profile screen
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const DeliveryProfileScreen(),
+                          ),
+                        );
+                      } else {
+                        setState(() {
+                          _currentNavIndex = index;
+                        });
+                      }
+                    },
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );

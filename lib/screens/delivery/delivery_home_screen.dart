@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
@@ -223,21 +224,69 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                                   ),
                                   const SizedBox(height: AppTheme.spacingM),
                                   ...recentOrders.map((order) {
+                                    final isAssigned = order.status ==
+                                        AppConstants.orderStatusAssigned;
+
                                     return RecentShipmentItem(
                                       shipmentId: order.orderNumber,
                                       origin: 'Restaurant',
                                       destination: order.deliveryAddress.city,
                                       status: _statusLabel(order.status),
                                       onTap: () {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                DeliveryCompletionScreen(
-                                              order: order,
+                                        // Card tap = view current task/status
+                                        if (order.status ==
+                                                AppConstants
+                                                    .orderStatusInTransit ||
+                                            order.status ==
+                                                AppConstants
+                                                    .orderStatusDelivered) {
+                                          // When driver is on the way OR already delivered,
+                                          // show completion screen with "Mark as done"
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  DeliveryCompletionScreen(
+                                                order: order,
+                                              ),
                                             ),
-                                          ),
-                                        );
+                                          );
+                                        } else {
+                                          // For assigned / picked_up, keep using pickup task flow
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const PickupTaskScreen(),
+                                            ),
+                                          );
+                                        }
                                       },
+                                      actionLabel:
+                                          isAssigned ? 'Accept delivery' : null,
+                                      onAction: isAssigned
+                                          ? () async {
+                                              final success =
+                                                  await orderProvider
+                                                      .updateOrderStatus(
+                                                order.id,
+                                                AppConstants
+                                                    .orderStatusInTransit,
+                                              );
+                                              if (!context.mounted) return;
+                                              if (!success) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      orderProvider.error ??
+                                                          'Failed to accept order',
+                                                    ),
+                                                    backgroundColor:
+                                                        AppColors.error,
+                                                  ),
+                                                );
+                                              }
+                                            }
+                                          : null,
                                     );
                                   }).toList(),
                                   const SizedBox(height: AppTheme.spacingXL),
@@ -356,7 +405,12 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                     const SizedBox(height: 4),
                     GestureDetector(
                       onTap: () {
-                        // Handle edit profile
+                        // Open full profile screen where driver can edit details
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const DeliveryProfileScreen(),
+                          ),
+                        );
                       },
                       child: Text(
                         'Edit your profile',
@@ -378,9 +432,9 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                 child: DeliveryQuickActionCard(
                   icon: Icons.location_on,
                   title: 'Your Location',
-                  subtitle: 'New Cairo m E...',
+                  subtitle: _buildLocationSubtitle(authProvider),
                   onTap: () {
-                    // Handle location tap
+                    // Could later open a full map; for now it's informational.
                   },
                 ),
               ),
@@ -404,7 +458,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                 child: DeliveryQuickActionCard(
                   icon: Icons.account_balance_wallet,
                   title: 'My wallet',
-                  subtitle: '\$3450.30',
+                  subtitle: '£3450.30',
                   onTap: () {
                     // Handle wallet tap
                   },
@@ -419,6 +473,19 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
         ],
       ),
     );
+  }
+
+  String _buildLocationSubtitle(AuthProvider authProvider) {
+    final loc = authProvider.deliveryBoyModel?.currentLocation;
+    if (loc == null ||
+        !loc.containsKey('lat') ||
+        !loc.containsKey('lng')) {
+      return 'Location unavailable';
+    }
+
+    final lat = loc['lat']!;
+    final lng = loc['lng']!;
+    return '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}';
   }
 }
 

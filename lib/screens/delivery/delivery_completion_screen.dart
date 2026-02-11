@@ -98,7 +98,7 @@ class DeliveryCompletionScreen extends StatelessWidget {
                 weight: '${order.items.length} items',
               ),
               const SizedBox(height: AppTheme.spacingXL),
-              // Go back Home button (also marks order as delivered)
+              // Mark as done button (marks order as delivered and returns home)
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -148,7 +148,7 @@ class DeliveryCompletionScreen extends StatelessWidget {
                     elevation: 0,
                   ),
                   child: Text(
-                    'Go back Home',
+                    'Mark as done',
                     style: AppTextStyles.buttonLarge,
                   ),
                 ),

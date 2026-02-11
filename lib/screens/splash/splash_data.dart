@@ -21,27 +21,24 @@ class SplashScreenData {
     SplashData(
       pageIndex: 0,
       imagePath: 'handsome-chef-with-closed-eyes-holding-pan-and-cap-2026-01-05-23-55-08-utc-removebg-preview.png',
-      headline: 'Explore Our Delicious Restaurant Menu',
-      highlightWords: ['Delicious Restaurant'],
+      headline: 'How Our App Works - Browse & Select',
+      highlightWords: ['Browse & Select'],
       bodyText:
-          'Discover a wide variety of mouth-watering dishes prepared with fresh ingredients and authentic flavors.',
+          'Browse through our extensive menu, explore categories, and select your favorite dishes. Add items to your cart with just a tap.',
     ),
     SplashData(
       pageIndex: 1,
-      imagePath: 'noodles-with-seafood-2026-01-05-05-04-44-utc-removebg-preview.png',
-      headline: 'Fast and Reliable Food Delivery to Your Doorstep',
-      highlightWords: ['Fast', 'Reliable'],
-      bodyText:
-          'Get your favorite meals delivered hot and fresh. We ensure quality food reaches you quickly and safely.',
+      imagePath: '2ndsplashvedio.mp4',
+      headline: '',
+      highlightWords: [],
+      bodyText: '',
     ),
     SplashData(
       pageIndex: 2,
-      imagePath:
-          'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80&fm=jpg',
-      headline: 'Order Smart with Best Prices and Offers',
-      highlightWords: ['Best Prices'],
-      bodyText:
-          'Enjoy exclusive deals and discounts on your favorite dishes. Save more with our special offers and loyalty rewards.',
+      imagePath: 'splash_video.mp4',
+      headline: '',
+      highlightWords: [],
+      bodyText: '',
     ),
   ];
 

@@ -6,12 +6,14 @@ import '../models/delivery_boy_model.dart';
 import '../models/admin_model.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/delivery_boy_repository.dart';
+import '../repositories/order_repository.dart';
 
 /// Auth provider for managing authentication state
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
   final UserRepository _userRepository = UserRepository();
   final DeliveryBoyRepository _deliveryBoyRepository = DeliveryBoyRepository();
+  final OrderRepository _orderRepository = OrderRepository();
 
   User? _user;
   String? _userRole;
@@ -295,8 +297,12 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// Update user profile (name, phone)
-  Future<bool> updateProfile({String? name, String? phone}) async {
+  /// Update user profile (name, phone, photo)
+  Future<bool> updateProfile({
+    String? name,
+    String? phone,
+    String? photoUrl,
+  }) async {
     if (_user == null || _userModel == null) {
       _error = 'User not authenticated';
       notifyListeners();
@@ -311,6 +317,7 @@ class AuthProvider with ChangeNotifier {
       final updatedUser = _userModel!.copyWith(
         name: name,
         phone: phone,
+        photoUrl: photoUrl,
       );
       await _userRepository.updateUser(updatedUser);
       
@@ -378,11 +385,59 @@ class AuthProvider with ChangeNotifier {
         latitude,
         longitude,
       );
+      // Also update location on all active orders assigned to this driver
+      await _orderRepository.updateDeliveryLocationForDeliveryBoy(
+        _user!.uid,
+        latitude,
+        longitude,
+      );
       await _loadUserData(_user!.uid);
       notifyListeners();
       return true;
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Update password
+  Future<bool> updatePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    if (_user == null) {
+      _error = 'User not authenticated';
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      // Re-authenticate user with current password
+      final credential = EmailAuthProvider.credential(
+        email: _user!.email!,
+        password: currentPassword,
+      );
+      await _user!.reauthenticateWithCredential(credential);
+
+      // Update password
+      await _authService.updatePassword(newPassword);
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _error = _getErrorMessage(e);
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      _isLoading = false;
       notifyListeners();
       return false;
     }

@@ -2,21 +2,36 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <!-- Permissions required for picking images from gallery/camera -->
-    <!-- Android 13+ media permission -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <!-- Legacy external storage read permission for Android 12 and below -->
+    <!-- Location permissions for address saving and geocoding -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Image picker uses Photo Picker API on Android 13+ (no permission needed) -->
+    <!-- Legacy external storage read permission for Android 12 and below only -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- Video playback support -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Hardware acceleration for video decoding -->
+    <uses-feature android:name="android.hardware.video.acceleration" android:required="false" />
     <application
-        android:label="new_ui"
+        android:label="Curryfy"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:hardwareAccelerated="true">
+        <!-- Google Maps API key
+             NOTE: To fix DEVELOPER_ERROR warnings, ensure in Google Cloud Console:
+             1. Enable "Maps SDK for Android" API for this key
+             2. Add package name restriction: com.curryfy.app
+             3. Add SHA-1 certificate fingerprint (get with: keytool -list -v -keystore <keystore>)
+        -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyBQHRsC1Im46M2k8a7896YFdgD5AfYB8RE" />
         <activity
-            android:name=".MainActivity"
+            android:name="com.curryfy.app.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""

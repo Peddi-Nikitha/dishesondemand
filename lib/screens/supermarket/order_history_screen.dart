@@ -4,6 +4,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../widgets/logout_dialog.dart';
 import '../../utils/constants.dart';
 import '../../providers/order_provider.dart';
 import '../../providers/delivery_boy_provider.dart';
@@ -208,7 +209,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             label: 'Logout',
             isActive: false,
             onTap: () {
-              Navigator.of(context).pop();
+              showDialog(
+                context: context,
+                builder: (ctx) => const LogoutDialog(),
+              );
             },
           ),
           const SizedBox(height: AppTheme.spacingL),
@@ -563,7 +567,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '\$${order.total.toStringAsFixed(2)}',
+                  '£${order.total.toStringAsFixed(2)}',
                   textAlign: TextAlign.right,
                   style: AppTextStyles.bodyMedium.copyWith(
                     color: Colors.white,

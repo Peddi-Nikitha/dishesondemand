@@ -26,8 +26,8 @@ class MenuItem {
     this.isNonVeg = false,
   });
 
-  String get formattedCurrentPrice => '\$${currentPrice.toStringAsFixed(0)}';
-  String get formattedOriginalPrice => originalPrice != null ? '\$${originalPrice!.toStringAsFixed(0)}' : '';
+  String get formattedCurrentPrice => '£${currentPrice.toStringAsFixed(0)}';
+  String get formattedOriginalPrice => originalPrice != null ? '£${originalPrice!.toStringAsFixed(0)}' : '';
 }
 
 /// Menu data organized by categories

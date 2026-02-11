@@ -4,6 +4,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../widgets/logout_dialog.dart';
 import '../../providers/user_provider.dart';
 import '../../models/user_model.dart';
 import 'customer_details_screen.dart';
@@ -202,7 +203,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
             label: 'Logout',
             isActive: false,
             onTap: () {
-              Navigator.of(context).pop();
+              showDialog(
+                context: context,
+                builder: (ctx) => const LogoutDialog(),
+              );
             },
           ),
           const SizedBox(height: AppTheme.spacingL),

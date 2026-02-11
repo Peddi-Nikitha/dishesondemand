@@ -238,6 +238,26 @@ class OrderRepository {
     }
   }
 
+  /// Update delivery boy location on all active orders for a driver.
+  Future<void> updateDeliveryLocationForDeliveryBoy(
+      String deliveryBoyId, double lat, double lng) async {
+    try {
+      final orders = await getOrdersByDeliveryBoyId(deliveryBoyId);
+      for (final order in orders) {
+        if (order.status == AppConstants.orderStatusDelivered ||
+            order.status == AppConstants.orderStatusCancelled) {
+          continue;
+        }
+        final updated = order.copyWith(
+          deliveryBoyLocation: {'lat': lat, 'lng': lng},
+        );
+        await updateOrder(updated);
+      }
+    } catch (e) {
+      throw 'Error updating delivery location on orders: $e';
+    }
+  }
+
   /// Assign delivery boy to order
   Future<void> assignDeliveryBoy(String orderId, String deliveryBoyId) async {
     try {

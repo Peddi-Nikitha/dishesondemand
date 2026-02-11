@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
@@ -11,6 +12,9 @@ import '../../widgets/theme_toggle_selector.dart';
 import '../../widgets/logout_dialog.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/notification_provider.dart';
+import '../profile/password_manager_screen.dart';
+import '../profile/help_center_screen.dart';
+import '../profile/privacy_policy_screen.dart';
 import 'delivery_home_screen.dart';
 import 'earnings_screen.dart';
 import 'notifications_screen.dart';
@@ -128,7 +132,11 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                       icon: Icons.lock,
                       title: 'Password Manager',
                       onTap: () {
-                        // Handle password manager
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const PasswordManagerScreen(),
+                          ),
+                        );
                       },
                     ),
                     DeliverySettingsOption(
@@ -139,20 +147,40 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                         setState(() {
                           _notificationsEnabled = value;
                         });
+                        // Save notification preference
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              value
+                                  ? 'Notifications enabled'
+                                  : 'Notifications disabled',
+                            ),
+                            duration: const Duration(seconds: 1),
+                            backgroundColor: AppColors.primary,
+                          ),
+                        );
                       },
                     ),
                     DeliverySettingsOption(
                       icon: Icons.help_outline,
                       title: 'Help Center',
                       onTap: () {
-                        // Handle help center
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const HelpCenterScreen(),
+                          ),
+                        );
                       },
                     ),
                     DeliverySettingsOption(
                       icon: Icons.privacy_tip,
                       title: 'Privacy Policy',
                       onTap: () {
-                        // Handle privacy policy
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const PrivacyPolicyScreen(),
+                          ),
+                        );
                       },
                     ),
                     const SizedBox(height: AppTheme.spacingXL),

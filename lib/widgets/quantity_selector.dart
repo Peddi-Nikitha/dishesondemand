@@ -24,8 +24,9 @@ class QuantitySelector extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         // Minus Button
-        GestureDetector(
+        InkWell(
           onTap: onDecrease,
+          borderRadius: BorderRadius.circular(16),
           child: Container(
             width: 32,
             height: 32,
@@ -43,16 +44,18 @@ class QuantitySelector extends StatelessWidget {
         const SizedBox(height: 8),
         // Quantity Text
         Text(
-          quantityText,
+          quantity.toString(),
           style: AppTextStyles.bodyMedium.copyWith(
             color: ThemeHelper.getTextPrimaryColor(context),
             fontSize: 14,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 8),
         // Plus Button
-        GestureDetector(
+        InkWell(
           onTap: onIncrease,
+          borderRadius: BorderRadius.circular(16),
           child: Container(
             width: 32,
             height: 32,

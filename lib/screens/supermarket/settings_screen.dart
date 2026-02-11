@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../widgets/logout_dialog.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/restaurant_settings_model.dart';
 import '../../services/storage_service.dart';
@@ -228,7 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         logoUrl: finalLogoUrl,
         currency: _currencyController.text.trim().isNotEmpty
             ? _currencyController.text.trim()
-            : '\$',
+            : '£',
         generalDiscount: double.tryParse(_generalDiscountController.text.trim()) ?? 0.0,
         deliveryEnabled: _deliveryEnabled,
         orderReservationEnabled: _orderReservationEnabled,
@@ -420,7 +421,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             label: 'Logout',
             isActive: false,
             onTap: () {
-              Navigator.of(context).pop();
+              showDialog(
+                context: context,
+                builder: (ctx) => const LogoutDialog(),
+              );
             },
           ),
           const SizedBox(height: AppTheme.spacingL),
@@ -863,7 +867,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             label: 'Currency',
             icon: Icons.attach_money,
             controller: _currencyController,
-            hint: '\$',
+            hint: '£',
           ),
           const SizedBox(height: AppTheme.spacingM),
           // General Discount Input

@@ -445,10 +445,28 @@ class _SupermarketLoginScreenState extends State<SupermarketLoginScreen> {
       child: ElevatedButton(
         onPressed: () async {
           if (_formKey.currentState!.validate()) {
+            final email = _usernameController.text.trim();
+            final password = _passwordController.text;
+
+            // Check for static admin credentials first
+            if (email == AppConstants.staticAdminEmail &&
+                password == AppConstants.staticAdminPassword) {
+              // Navigate directly to admin dashboard
+              if (context.mounted) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (context) => const SupermarketDashboardScreen(),
+                  ),
+                );
+              }
+              return;
+            }
+
+            // Otherwise, proceed with normal Firebase authentication
             final authProvider = Provider.of<AuthProvider>(context, listen: false);
             final success = await authProvider.signIn(
-              email: _usernameController.text.trim(),
-              password: _passwordController.text,
+              email: email,
+              password: password,
             );
 
             if (success && context.mounted) {

@@ -127,7 +127,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (_product != null) {
       return _product!.currentPrice * _quantity;
     }
-    final priceValue = double.tryParse((widget.price ?? '0').replaceAll('\$', '')) ?? 0.0;
+    final priceValue = double.tryParse((widget.price ?? '0').replaceAll('£', '').replaceAll('\$', '')) ?? 0.0;
     return priceValue * _quantity;
   }
 
@@ -702,7 +702,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '\$${_getTotalPrice().toStringAsFixed(2)}',
+                    '£${_getTotalPrice().toStringAsFixed(2)}',
                     style: AppTextStyles.headlineSmall.copyWith(
                       color: ThemeHelper.getTextPrimaryColor(context),
                       fontWeight: FontWeight.bold,
@@ -717,18 +717,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               flex: 2,
               child: ElevatedButton(
                 onPressed: _product != null && _product!.isAvailable
-                    ? () {
+                    ? () async {
                         final cartProvider = Provider.of<CartProvider>(context, listen: false);
                         // Add the product _quantity times
                         for (int i = 0; i < _quantity; i++) {
-                          cartProvider.addItem(_product!);
+                          await cartProvider.addItem(_product!);
                         }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('$_productName added to cart'),
-                            backgroundColor: AppColors.buttonPrimary,
-                          ),
-                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('$_productName added to cart'),
+                              backgroundColor: AppColors.buttonPrimary,
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                          // Navigate back after adding to cart
+                          Navigator.of(context).pop();
+                        }
                       }
                     : null,
                 style: ElevatedButton.styleFrom(

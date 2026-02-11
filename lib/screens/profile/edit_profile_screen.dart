@@ -1,10 +1,15 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/storage_service.dart';
 
 /// Edit Profile Screen for updating user information
 class EditProfileScreen extends StatefulWidget {
@@ -19,6 +24,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   bool _isLoading = false;
+
+  final ImagePicker _imagePicker = ImagePicker();
+  final StorageService _storageService = StorageService();
+  File? _selectedImage;
 
   @override
   void initState() {
@@ -47,7 +56,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     setState(() {
       _isLoading = true;
     });
@@ -73,6 +82,90 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(authProvider.error ?? 'Failed to update profile'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _changePhoto() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    if (authProvider.user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You must be signed in to change your photo.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+
+      if (image == null) return;
+
+      if (kIsWeb) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Profile photo upload is only supported on Android / iOS builds.',
+            ),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _isLoading = true;
+        _selectedImage = File(image.path);
+      });
+
+      final downloadUrl = await _storageService.uploadUserProfileImage(
+        _selectedImage!,
+        authProvider.user!.uid,
+      );
+
+      final success = await authProvider.updateProfile(photoUrl: downloadUrl);
+
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile photo updated successfully!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authProvider.error ?? 'Failed to update profile photo',
+            ),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error updating photo: $e'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -124,15 +217,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   children: [
                                     CircleAvatar(
                                       radius: 60,
-                                      backgroundColor: ThemeHelper.getSurfaceColor(context),
-                                      backgroundImage: userModel?.photoUrl != null
-                                          ? NetworkImage(userModel!.photoUrl!)
-                                          : null,
-                                      child: userModel?.photoUrl == null
+                                      backgroundColor:
+                                          ThemeHelper.getSurfaceColor(context),
+                                      backgroundImage: (!kIsWeb &&
+                                              _selectedImage != null)
+                                          ? FileImage(_selectedImage!)
+                                          : (userModel?.photoUrl != null
+                                              ? NetworkImage(
+                                                  userModel!.photoUrl!,
+                                                )
+                                              : null),
+                                      child: _selectedImage == null &&
+                                              userModel?.photoUrl == null
                                           ? Icon(
                                               Icons.person,
                                               size: 60,
-                                              color: ThemeHelper.getTextSecondaryColor(context),
+                                              color: ThemeHelper
+                                                  .getTextSecondaryColor(
+                                                      context),
                                             )
                                           : null,
                                     ),
@@ -146,7 +248,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                           color: AppColors.primary,
                                           shape: BoxShape.circle,
                                           border: Border.all(
-                                            color: ThemeHelper.getBackgroundColor(context),
+                                            color: ThemeHelper
+                                                .getBackgroundColor(context),
                                             width: 2,
                                           ),
                                         ),
@@ -156,13 +259,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                             size: 18,
                                             color: AppColors.textOnPrimary,
                                           ),
-                                          onPressed: () {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(
-                                                content: Text('Photo upload feature coming soon'),
-                                              ),
-                                            );
-                                          },
+                                          onPressed:
+                                              _isLoading ? null : _changePhoto,
                                         ),
                                       ),
                                     ),

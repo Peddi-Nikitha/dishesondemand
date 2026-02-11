@@ -12,7 +12,8 @@ class OfferBanner extends StatelessWidget {
   final String illustrationUrl;
   final int currentIndex;
   final int totalIndicators;
-  final VoidCallback? onButtonTap;
+  final Function(String)? onButtonTap;
+  final String? productSearchTerm;
 
   const OfferBanner({
     super.key,
@@ -23,6 +24,7 @@ class OfferBanner extends StatelessWidget {
     this.currentIndex = 0,
     this.totalIndicators = 4,
     this.onButtonTap,
+    this.productSearchTerm,
   });
 
   Widget _buildImage(BuildContext context) {
@@ -162,8 +164,11 @@ class OfferBanner extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: AppTheme.spacingM),
-                        GestureDetector(
-                          onTap: onButtonTap,
+                        InkWell(
+                          onTap: onButtonTap != null && productSearchTerm != null
+                              ? () => onButtonTap!(productSearchTerm!)
+                              : null,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusM),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: AppTheme.spacingL,

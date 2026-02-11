@@ -11,7 +11,7 @@ import '../delivery/delivery_home_screen.dart';
 import '../supermarket/supermarket_dashboard_screen.dart';
 import 'splash_data.dart';
 import 'splash_page.dart';
-import '../welcome/welcome_screen.dart';
+import '../role_selection/role_selection_screen.dart';
 
 /// Main splash screen with PageView, indicators, and navigation
 class SplashScreen extends StatefulWidget {
@@ -67,17 +67,17 @@ class _SplashScreenState extends State<SplashScreen> {
       } else if (role == AppConstants.roleAdmin) {
         target = const SupermarketDashboardScreen();
       } else {
-        target = const WelcomeScreen();
+        target = const RoleSelectionScreen();
       }
 
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => target),
       );
     } else {
-      // No authenticated user -> go to onboarding / welcome
+      // No authenticated user -> go to role selection
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => const WelcomeScreen(),
+          builder: (context) => const RoleSelectionScreen(),
         ),
       );
     }

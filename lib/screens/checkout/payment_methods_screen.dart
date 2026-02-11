@@ -70,7 +70,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                         _buildSectionTitle('Cash'),
                         const SizedBox(height: AppTheme.spacingM),
                         PaymentOptionItem(
-                          icon: Icons.attach_money,
+                          icon: Icons.euro_sharp,
                           title: 'Cash',
                           isSelected: _selectedPaymentMethod?.type == 'cash',
                           onTap: () {

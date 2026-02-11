@@ -56,19 +56,19 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDusOEXRsGed2wuTvWGosurB5mAdqON--k',
-    appId: '1:964605209518:android:62d5a19e421e9d8996363f',
+    appId: '1:964605209518:android:42f30ccf597bc3c496363f',
     messagingSenderId: '964605209518',
     projectId: 'dishesondemandv2',
     storageBucket: 'dishesondemandv2.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDusOEXRsGed2wuTvWGosurB5mAdqON--k',
-    appId: '1:964605209518:ios:your-ios-app-id',
+    apiKey: 'AIzaSyCm_cPBCsrVFMIqrlMJX6Btif88iA50w_M',
+    appId: '1:964605209518:ios:efcc8ae47f2027b996363f',
     messagingSenderId: '964605209518',
     projectId: 'dishesondemandv2',
     storageBucket: 'dishesondemandv2.firebasestorage.app',
-    iosBundleId: 'com.dishesondemandresto',
+    iosBundleId: 'com.curryfy.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -77,7 +77,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '964605209518',
     projectId: 'dishesondemandv2',
     storageBucket: 'dishesondemandv2.firebasestorage.app',
-    iosBundleId: 'com.dishesondemandresto',
+    iosBundleId: 'com.curryfy.app',
   );
 }
 

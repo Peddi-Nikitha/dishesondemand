@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import '../models/order_model.dart';
 import '../repositories/order_repository.dart';
+import '../repositories/delivery_boy_repository.dart';
 import '../utils/constants.dart';
 
 /// Order provider for managing orders state
 class OrderProvider with ChangeNotifier {
   final OrderRepository _orderRepository = OrderRepository();
+  final DeliveryBoyRepository _deliveryBoyRepository = DeliveryBoyRepository();
 
   List<OrderModel> _orders = [];
   List<OrderModel> _deliveryBoyOrders = [];
@@ -120,7 +122,29 @@ class OrderProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      final order = _orders.firstWhere((o) => o.id == orderId);
+      // Find order in local cache first; if not present (e.g. on delivery app),
+      // fetch it directly from Firestore.
+      OrderModel? order;
+      try {
+        order = _orders.firstWhere((o) => o.id == orderId);
+      } catch (_) {
+        order = await _orderRepository.getOrderById(orderId);
+      }
+
+      if (order == null) {
+        throw 'Order not found';
+      }
+
+      // If transitioning to delivered, update driver's earnings
+      if (status == AppConstants.orderStatusDelivered &&
+          order.deliveryBoyId != null &&
+          order.status != AppConstants.orderStatusDelivered) {
+        await _deliveryBoyRepository.addDeliveryEarning(
+          order.deliveryBoyId!,
+          order.total,
+        );
+      }
+
       final updatedOrder = order.copyWith(status: status);
       await _orderRepository.updateOrder(updatedOrder);
       await loadAllOrders();

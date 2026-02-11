@@ -137,10 +137,10 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                         const SizedBox(height: AppTheme.spacingM),
                         // Order Summary
                         OrderSummary(
-                          subTotal: '\$${cartProvider.subtotal.toStringAsFixed(2)}',
-                          shipping: '\$${cartProvider.shipping.toStringAsFixed(2)}',
+                          subTotal: '£${cartProvider.subtotal.toStringAsFixed(2)}',
+                          shipping: '£${cartProvider.shipping.toStringAsFixed(2)}',
                           discount: _calculateDiscountPercentage(cartProvider),
-                          totalAmount: '\$${cartProvider.total.toStringAsFixed(2)}',
+                          totalAmount: '£${cartProvider.total.toStringAsFixed(2)}',
                         ),
                         const SizedBox(height: AppTheme.spacingXL),
                       ],

@@ -571,7 +571,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Current Price *',
                         border: OutlineInputBorder(),
-                        prefixText: '\$ ',
+                        prefixText: '£ ',
                       ),
                       keyboardType: TextInputType.numberWithOptions(decimal: true),
                       validator: (value) {
@@ -592,7 +592,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Original Price',
                         border: OutlineInputBorder(),
-                        prefixText: '\$ ',
+                        prefixText: '£ ',
                       ),
                       keyboardType: TextInputType.numberWithOptions(decimal: true),
                       validator: (value) {

@@ -9,6 +9,7 @@ import '../location/location_access_screen.dart';
 import 'create_account_screen.dart';
 import '../../utils/constants.dart';
 import '../delivery/delivery_home_screen.dart';
+import '../supermarket/supermarket_dashboard_screen.dart';
 
 /// Sign In screen with form fields and social login
 class SignInScreen extends StatefulWidget {
@@ -263,9 +264,28 @@ class _SignInScreenState extends State<SignInScreen> {
                             ? null
                             : () async {
                                 if (_formKey.currentState!.validate()) {
+                                  final email = _emailController.text.trim();
+                                  final password = _passwordController.text;
+
+                                  // Check for static admin credentials first
+                                  if (email == AppConstants.staticAdminEmail &&
+                                      password == AppConstants.staticAdminPassword) {
+                                    // Navigate directly to admin dashboard
+                                    if (context.mounted) {
+                                      Navigator.of(context).pushReplacement(
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              const SupermarketDashboardScreen(),
+                                        ),
+                                      );
+                                    }
+                                    return;
+                                  }
+
+                                  // Otherwise, proceed with normal Firebase authentication
                                   final success = await authProvider.signIn(
-                                    email: _emailController.text.trim(),
-                                    password: _passwordController.text,
+                                    email: email,
+                                    password: password,
                                   );
 
                                   if (success && context.mounted) {
@@ -297,10 +317,10 @@ class _SignInScreenState extends State<SignInScreen> {
                                       );
                                     } else if (role == AppConstants.roleAdmin) {
                                       // Navigate to admin dashboard
-                                      // TODO: Import and navigate to admin dashboard
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Admin dashboard coming soon'),
+                                      Navigator.of(context).pushReplacement(
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              const SupermarketDashboardScreen(),
                                         ),
                                       );
                                     } else if (role == AppConstants.roleDeliveryBoy) {

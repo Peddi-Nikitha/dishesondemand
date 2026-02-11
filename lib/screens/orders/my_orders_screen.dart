@@ -83,8 +83,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
         imageUrl: item.imageUrl,
         title: item.productName,
         quantity: '${item.quantity} ${item.quantity == 1 ? 'item' : 'items'}',
-        currentPrice: '\$${item.price.toStringAsFixed(2)}',
-        originalPrice: '\$${item.price.toStringAsFixed(2)}',
+        currentPrice: '£${item.price.toStringAsFixed(2)}',
+        originalPrice: '£${item.price.toStringAsFixed(2)}',
         discountBadge: discountBadge,
       );
     }).toList();
@@ -330,7 +330,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                             orderDate: _formatOrderDate(order.createdAt),
                             orderStatus: _getOrderStatusDisplay(order.status),
                             items: _convertOrderItems(order.items),
-                            totalAmount: '\$${order.total.toStringAsFixed(2)}',
+                            totalAmount: '£${order.total.toStringAsFixed(2)}',
                             onTrackOrder: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(

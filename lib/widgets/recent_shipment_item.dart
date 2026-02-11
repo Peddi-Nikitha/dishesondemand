@@ -11,6 +11,8 @@ class RecentShipmentItem extends StatelessWidget {
   final String destination;
   final String status; // "Delivered" or "Not Delivered"
   final VoidCallback? onTap;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   const RecentShipmentItem({
     super.key,
@@ -19,6 +21,8 @@ class RecentShipmentItem extends StatelessWidget {
     required this.destination,
     required this.status,
     this.onTap,
+    this.actionLabel,
+    this.onAction,
   });
 
   bool get isDelivered => status.toLowerCase().contains('delivered');
@@ -102,6 +106,26 @@ class RecentShipmentItem extends StatelessWidget {
                 ),
               ],
             ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: AppTheme.spacingM),
+              SizedBox(
+                width: double.infinity,
+                height: 40,
+                child: ElevatedButton(
+                  onPressed: onAction,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.textOnPrimary,
+                    elevation: 0,
+                    textStyle: AppTextStyles.buttonMedium,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                    ),
+                  ),
+                  child: Text(actionLabel!),
+                ),
+              ),
+            ],
           ],
         ),
       ),

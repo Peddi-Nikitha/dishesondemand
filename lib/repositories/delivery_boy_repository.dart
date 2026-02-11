@@ -114,6 +114,23 @@ class DeliveryBoyRepository {
     }
   }
 
+  /// Increment earnings and delivery count when an order is completed.
+  Future<void> addDeliveryEarning(
+      String deliveryBoyId, double amount) async {
+    try {
+      final deliveryBoy = await getDeliveryBoyById(deliveryBoyId);
+      if (deliveryBoy != null) {
+        final updated = deliveryBoy.copyWith(
+          totalDeliveries: deliveryBoy.totalDeliveries + 1,
+          totalEarnings: deliveryBoy.totalEarnings + amount,
+        );
+        await updateDeliveryBoy(updated);
+      }
+    } catch (e) {
+      throw 'Error updating delivery boy earnings: $e';
+    }
+  }
+
   /// Delete delivery boy
   Future<void> deleteDeliveryBoy(String deliveryBoyId) async {
     try {

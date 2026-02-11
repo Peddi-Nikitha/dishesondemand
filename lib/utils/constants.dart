@@ -33,5 +33,9 @@ class AppConstants {
   static const String deliveryBoyStatusActive = 'active';
   static const String deliveryBoyStatusInactive = 'inactive';
   static const String deliveryBoyStatusPending = 'pending';
+
+  // Static Admin Credentials (for bypassing Firebase auth)
+  static const String staticAdminEmail = 'admin@curryfy.com';
+  static const String staticAdminPassword = 'admin123';
 }
 

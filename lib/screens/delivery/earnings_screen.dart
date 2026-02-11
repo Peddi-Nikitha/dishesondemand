@@ -184,7 +184,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                                   child: EarningsTotalCard(
                                     label: 'Total',
                                     amount:
-                                        '\$${totalEarnings.toStringAsFixed(2)}',
+                                        '£${totalEarnings.toStringAsFixed(2)}',
                                     changeText: changeText,
                                     isPositive: isPositive,
                                   ),
@@ -350,7 +350,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                                           ),
                                         ),
                                         trailing: Text(
-                                          '\$${order.total.toStringAsFixed(2)}',
+                                          '£${order.total.toStringAsFixed(2)}',
                                           style: AppTextStyles.bodyMedium
                                               .copyWith(
                                             color: ThemeHelper

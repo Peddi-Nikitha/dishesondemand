@@ -37,21 +37,10 @@ class WelcomeScreen extends StatelessWidget {
                   Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                      child: Image.network(
-                        'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
+                      child: Image.asset(
+                        'Untitled design - chef.PNG',
                         height: MediaQuery.of(context).size.height * 0.5,
                         fit: BoxFit.contain,
-                        headers: const {
-                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                          'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(
-                            Icons.shopping_bag,
-                            size: 200,
-                            color: ThemeHelper.getPrimaryColor(context),
-                          );
-                        },
                       ),
                     ),
                   ),

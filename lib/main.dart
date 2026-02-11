@@ -19,16 +19,12 @@ import 'screens/splash/splash_screen.dart';
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Ensure Firebase is initialized in the background isolate.
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Set up background message handler for FCM.
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -69,12 +65,29 @@ class _MyAppState extends State<MyApp> {
       child: Consumer2<ThemeProvider, AuthProvider>(
         builder: (context, themeProvider, authProvider, _) {
           // Keep cart in sync with the authenticated user for Firestore persistence
-          final cartProvider =
-              Provider.of<CartProvider>(context, listen: false);
+          final cartProvider = Provider.of<CartProvider>(
+            context,
+            listen: false,
+          );
           cartProvider.setUser(authProvider.user?.uid);
+          
+          // Initialize notifications based on user role (use post-frame callback to avoid setState during build)
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!context.mounted) return;
+            
+            final notificationProvider = Provider.of<NotificationProvider>(
+              context,
+              listen: false,
+            );
+            if (authProvider.userRole == 'user' && authProvider.userModel != null) {
+              notificationProvider.setUserId(authProvider.userModel!.uid);
+            } else if (authProvider.userRole == 'delivery_boy' && authProvider.deliveryBoyModel != null) {
+              notificationProvider.setDeliveryBoyId(authProvider.deliveryBoyModel!.uid);
+            }
+          });
 
           return MaterialApp(
-            title: 'Restaurant App',
+            title: 'Curryfy',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,

@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -26,6 +28,8 @@ class OrderTrackingScreen extends StatefulWidget {
 
 class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   bool _useFallbackStream = false; // State to manage stream fallback
+  GoogleMapController? _mapController;
+  LatLng? _lastDriverPosition;
 
   @override
   Widget build(BuildContext context) {
@@ -555,7 +559,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Qty: ${item.quantity} × \$${item.price.toStringAsFixed(2)}',
+                          'Qty: ${item.quantity} × £${item.price.toStringAsFixed(2)}',
                           style: AppTextStyles.bodySmall.copyWith(
                             color: ThemeHelper.getTextSecondaryColor(context),
                           ),
@@ -565,7 +569,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   ),
                   // Price
                   Text(
-                    '\$${(item.price * item.quantity).toStringAsFixed(2)}',
+                    '£${(item.price * item.quantity).toStringAsFixed(2)}',
                     style: AppTextStyles.bodyMedium.copyWith(
                       color: ThemeHelper.getTextPrimaryColor(context),
                       fontWeight: FontWeight.w600,
@@ -578,19 +582,19 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           const Divider(),
           const SizedBox(height: AppTheme.spacingM),
           // Price Breakdown
-          _buildPriceRow('Subtotal', '\$${order.subtotal.toStringAsFixed(2)}'),
+          _buildPriceRow('Subtotal', '£${order.subtotal.toStringAsFixed(2)}'),
           const SizedBox(height: AppTheme.spacingS),
-          _buildPriceRow('Delivery Fee', '\$${order.deliveryFee.toStringAsFixed(2)}'),
+          _buildPriceRow('Delivery Fee', '£${order.deliveryFee.toStringAsFixed(2)}'),
           if (order.discount > 0) ...[
             const SizedBox(height: AppTheme.spacingS),
-            _buildPriceRow('Discount', '-\$${order.discount.toStringAsFixed(2)}'),
+            _buildPriceRow('Discount', '-£${order.discount.toStringAsFixed(2)}'),
           ],
           const SizedBox(height: AppTheme.spacingM),
           const Divider(),
           const SizedBox(height: AppTheme.spacingM),
           _buildPriceRow(
             'Total',
-            '\$${order.total.toStringAsFixed(2)}',
+            '£${order.total.toStringAsFixed(2)}',
             isTotal: true,
           ),
         ],
@@ -796,15 +800,73 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       ),
                   ],
                 ),
-                if (order.deliveryBoyLocation != null) ...[
-                  const SizedBox(height: AppTheme.spacingM),
-                  Text(
-                    'Current Location: ${order.deliveryBoyLocation!['lat']?.toStringAsFixed(4)}, ${order.deliveryBoyLocation!['lng']?.toStringAsFixed(4)}',
-                    style: AppTextStyles.bodySmall.copyWith(
-                      color: ThemeHelper.getTextSecondaryColor(context),
+                // Show live location (map on mobile, text fallback on web)
+                ...() {
+                  final Map<String, double>? loc =
+                      order.deliveryBoyLocation ??
+                          deliveryBoy?.currentLocation;
+                  if (loc == null ||
+                      !loc.containsKey('lat') ||
+                      !loc.containsKey('lng')) {
+                    return <Widget>[];
+                  }
+
+                  final lat = loc['lat']!;
+                  final lng = loc['lng']!;
+                  // On web, avoid google_maps_flutter setup issues and just
+                  // show coordinates as text.
+                  if (kIsWeb) {
+                    return <Widget>[
+                      const SizedBox(height: AppTheme.spacingM),
+                      Text(
+                        'Current Location: '
+                        '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: ThemeHelper.getTextSecondaryColor(context),
+                        ),
+                      ),
+                    ];
+                  }
+
+                  final pos = LatLng(lat, lng);
+
+                  // Smoothly move the camera to the latest position
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (_mapController != null) {
+                      _mapController!.animateCamera(
+                        CameraUpdate.newLatLng(pos),
+                      );
+                    }
+                    _lastDriverPosition = pos;
+                  });
+
+                  return <Widget>[
+                    const SizedBox(height: AppTheme.spacingM),
+                    SizedBox(
+                      height: 220,
+                      child: GoogleMap(
+                        initialCameraPosition: CameraPosition(
+                          target: _lastDriverPosition ?? pos,
+                          zoom: 15,
+                        ),
+                        markers: {
+                          Marker(
+                            markerId: const MarkerId('driver'),
+                            position: pos,
+                            icon: BitmapDescriptor.defaultMarkerWithHue(
+                              BitmapDescriptor.hueOrange,
+                            ),
+                          ),
+                        },
+                        myLocationButtonEnabled: false,
+                        zoomControlsEnabled: false,
+                        onMapCreated: (controller) {
+                          _mapController ??= controller;
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ];
+                }(),
               ] else ...[
                 Text(
                   'Delivery person assigned',

@@ -451,7 +451,7 @@ Future<void> _seedRestaurantSettings(FirebaseFirestore firestore) async {
     phone: '+2 01090229396',
     email: 'foxf.com@gmail.com',
     address: 'New Cairo - Egypt',
-    currency: '\$',
+    currency: '£',
     generalDiscount: 0.0,
     deliveryEnabled: true,
     orderReservationEnabled: true,
