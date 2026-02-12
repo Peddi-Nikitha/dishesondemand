@@ -9,6 +9,7 @@ import '../../utils/theme_helper.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/user_model.dart';
 import '../../services/location_service.dart';
+import '../../services/postcode_service.dart';
 
 /// Add/Edit Delivery Address screen with form validation and Firestore integration
 class AddAddressScreen extends StatefulWidget {
@@ -63,7 +64,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     super.initState();
     // If editing, populate fields
     if (widget.address != null) {
-      _labelController.text = widget.address!.label;
+      _labelController.text = widget.address!.label; // Keep for editing mode
       _streetController.text = widget.address!.street;
       _cityController.text = widget.address!.city;
       _stateController.text = widget.address!.state;
@@ -81,8 +82,18 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     // Add listener for unified address search
     _unifiedAddressController.addListener(_onUnifiedAddressChanged);
     _unifiedAddressFocusNode.addListener(() {
-      if (!_unifiedAddressFocusNode.hasFocus) {
-        _hideUnifiedAddressSuggestions();
+      if (_unifiedAddressFocusNode.hasFocus) {
+        // Show suggestions if they exist when field gains focus
+        if (_unifiedAddressSuggestions.isNotEmpty) {
+          _showUnifiedAddressSuggestions();
+        }
+      } else {
+        // Small delay before hiding to allow tap on suggestion
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (!_unifiedAddressFocusNode.hasFocus) {
+            _hideUnifiedAddressSuggestions();
+          }
+        });
       }
     });
     
@@ -108,6 +119,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     _unifiedAddressDebounceTimer?.cancel();
     final query = _unifiedAddressController.text.trim();
     
+    // Trigger search for postcodes (minimum 3 chars) or any address (minimum 3 chars)
     if (query.length >= 3 && widget.address == null) {
       _unifiedAddressDebounceTimer = Timer(const Duration(milliseconds: 400), () {
         _searchUnifiedAddress(query);
@@ -120,25 +132,93 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
   Future<void> _searchUnifiedAddress(String query) async {
     if (query.length < 3) return;
     
+    // Check if query starts with a number (likely a full address with door number)
+    final startsWithNumber = RegExp(r'^\d').hasMatch(query);
+    
+    // If user types something like "194 Green Lane" or "194", use regular address search
+    if (startsWithNumber) {
+      setState(() {
+        _isSearchingUnifiedAddress = true;
+      });
+      await _searchUnifiedAddressRegular(query);
+      return;
+    }
+    
+    // Normalise query for postcode detection (e.g. "ig3 9lq" -> "IG3 9LQ")
+    final normalizedQuery = query.toUpperCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    
+    // UK postcode patterns:
+    // Complete: "IG3 9LQ" or "IG39LQ" (outward + inward code)
+    // Only use postcode search for complete postcodes to avoid API errors
+    final completePostcodeRegex = RegExp(r'^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$');
+    final normalizedQueryNoSpaces = normalizedQuery.replaceAll(' ', '');
+    final isCompletePostcode = completePostcodeRegex.hasMatch(normalizedQueryNoSpaces);
+
     setState(() {
       _isSearchingUnifiedAddress = true;
     });
     
     try {
+      // Only use postcode search for complete postcodes (e.g., "IG3 9LQ")
+      // For partial postcodes (e.g., "IG3"), use regular address search
+      if (isCompletePostcode) {
+        await _searchUnifiedAddressByPostcode(normalizedQuery);
+        return;
+      }
+
+      // Use regular address search for partial postcodes and other queries
+      await _searchUnifiedAddressRegular(query);
+    } catch (e) {
+      debugPrint('❌ Unified address search error: $e');
+      if (mounted) {
+        setState(() {
+          _isSearchingUnifiedAddress = false;
+        });
+      }
+    }
+  }
+  
+  /// Regular address search for partial postcodes and general address queries
+  Future<void> _searchUnifiedAddressRegular(String query) async {
+    try {
       debugPrint('🔍 Unified Address Search: "$query"');
+      
+      // Extract door number if present at the start (e.g., "194 Green Lane")
+      String? extractedDoorNumber;
+      String searchAddress = query;
+      final doorMatch = RegExp(r'^(\d+)\s+(.+)').firstMatch(query);
+      if (doorMatch != null) {
+        extractedDoorNumber = doorMatch.group(1);
+        searchAddress = doorMatch.group(2) ?? query;
+        debugPrint('🚪 Extracted door number: $extractedDoorNumber, searching for: $searchAddress');
+      }
       
       final country = _countryController.text.trim().isNotEmpty 
           ? _countryController.text.trim() 
           : 'United Kingdom';
       
-      // Search with country for better results
+      // Search with country for better results (works for postcodes and addresses)
       final searchQuery = '$query, $country';
-      final locations = await locationFromAddress(searchQuery);
+      List<Location> locations;
+      try {
+        locations = await locationFromAddress(searchQuery);
+      } catch (e) {
+        debugPrint('⚠️ Address search error: $e');
+        if (mounted) {
+          setState(() {
+            _isSearchingUnifiedAddress = false;
+          });
+        }
+        return;
+      }
       
+      // Handle empty locations
       if (locations.isEmpty || !mounted) {
-        setState(() {
-          _isSearchingUnifiedAddress = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isSearchingUnifiedAddress = false;
+          });
+        }
         return;
       }
       
@@ -158,22 +238,33 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
           );
           
           if (addressDetails != null) {
-            final fullAddress = _buildFullAddressString(addressDetails);
+            // Use extracted door number from query if available, otherwise use geocoded one
+            final doorNumber = extractedDoorNumber ?? (addressDetails['doorNumber'] ?? '');
+            final streetName = addressDetails['streetName'] ?? '';
+            final street = doorNumber.isNotEmpty && streetName.isNotEmpty
+                ? '$doorNumber $streetName'
+                : (addressDetails['street'] ?? '');
+            
+            final fullAddress = _buildFullAddressString({
+              ...addressDetails,
+              'doorNumber': doorNumber,
+              'street': street,
+            });
             
             if (fullAddress.isNotEmpty && !seenAddresses.contains(fullAddress.toLowerCase())) {
               seenAddresses.add(fullAddress.toLowerCase());
               suggestions.add({
                 'fullAddress': fullAddress,
-                'doorNumber': addressDetails['doorNumber'] ?? '',
-                'streetName': addressDetails['streetName'] ?? '',
-                'street': addressDetails['street'] ?? '',
+                'doorNumber': doorNumber,
+                'streetName': streetName,
+                'street': street,
                 'city': addressDetails['city'] ?? '',
                 'state': addressDetails['state'] ?? '',
                 'zipCode': addressDetails['zipCode'] ?? '',
                 'country': addressDetails['country'] ?? country,
               });
               
-              debugPrint('✅ Added: $fullAddress');
+              debugPrint('✅ Added: $street (door: $doorNumber)');
             }
           }
         } catch (e) {
@@ -183,16 +274,22 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       }
       
       if (mounted) {
+        final finalSuggestions = suggestions.take(8).toList();
         setState(() {
-          _unifiedAddressSuggestions = suggestions.take(8).toList();
+          _unifiedAddressSuggestions = finalSuggestions;
           _isSearchingUnifiedAddress = false;
         });
         
-        if (suggestions.isNotEmpty) {
-          _showUnifiedAddressSuggestions();
-        } else {
-          _hideUnifiedAddressSuggestions();
-        }
+        // Show or hide suggestions after state update
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            if (finalSuggestions.isNotEmpty && _unifiedAddressFocusNode.hasFocus) {
+              _showUnifiedAddressSuggestions();
+            } else {
+              _hideUnifiedAddressSuggestions();
+            }
+          }
+        });
       }
     } catch (e) {
       debugPrint('❌ Unified address search error: $e');
@@ -200,6 +297,82 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
         setState(() {
           _isSearchingUnifiedAddress = false;
         });
+      }
+    }
+  }
+  
+  /// Specialised search path when user enters a UK‑style postcode like "IG3 9LQ".
+  /// Uses the free postcodes.io API for reliable UK postcode lookups.
+  Future<void> _searchUnifiedAddressByPostcode(String postcode) async {
+    try {
+      debugPrint('🔍 Unified Address Postcode Search (using postcodes.io): "$postcode"');
+
+      // First, try to lookup the exact postcode
+      List<Map<String, dynamic>> suggestions = await PostcodeService.lookupPostcode(postcode);
+      
+      // If that returns results, also try to get nearby postcodes for more options
+      if (suggestions.isNotEmpty && mounted) {
+        final nearbyResults = await PostcodeService.searchNearbyPostcodes(postcode);
+        
+        // Merge results, avoiding duplicates
+        final seenKeys = suggestions.map((s) => '${s['zipCode']?.toLowerCase()}').toSet();
+        
+        for (var nearby in nearbyResults) {
+          final key = '${nearby['zipCode']?.toLowerCase()}';
+          if (!seenKeys.contains(key)) {
+            suggestions.add(nearby);
+            seenKeys.add(key);
+          }
+        }
+      }
+      
+      // If postcode lookup fails or returns nothing, fall back to geocoding search
+      if (suggestions.isEmpty) {
+        debugPrint('⚠️ Postcode lookup returned no results, falling back to geocoding');
+        if (mounted) {
+          await _searchUnifiedAddressRegular(postcode);
+        }
+        return;
+      }
+
+      if (!mounted) return;
+
+      debugPrint('✅ Found ${suggestions.length} addresses for postcode: $postcode');
+
+      // Prioritise suggestions that have a door number (though postcodes.io doesn't provide them)
+      suggestions.sort((a, b) {
+        final aHasDoor = (a['doorNumber'] as String? ?? '').isNotEmpty;
+        final bHasDoor = (b['doorNumber'] as String? ?? '').isNotEmpty;
+        if (aHasDoor && !bHasDoor) return -1;
+        if (!aHasDoor && bHasDoor) return 1;
+        return 0;
+      });
+
+      // Show up to 15 suggestions
+      final finalSuggestions = suggestions.take(15).toList();
+
+      setState(() {
+        _unifiedAddressSuggestions = finalSuggestions;
+        _isSearchingUnifiedAddress = false;
+      });
+
+      // Show overlay dropdown if we have results and the field is focused
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (finalSuggestions.isNotEmpty && _unifiedAddressFocusNode.hasFocus) {
+          _showUnifiedAddressSuggestions();
+        } else {
+          _hideUnifiedAddressSuggestions();
+        }
+      });
+    } catch (e) {
+      debugPrint('❌ Unified postcode search unexpected error: $e');
+      if (mounted) {
+        setState(() {
+          _isSearchingUnifiedAddress = false;
+        });
+        // Fall back to regular search on error
+        await _searchUnifiedAddressRegular(postcode);
       }
     }
   }
@@ -238,117 +411,298 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
   void _showUnifiedAddressSuggestions() {
     _hideUnifiedAddressSuggestions();
     
+    if (_unifiedAddressSuggestions.isEmpty) return;
+    
     _unifiedAddressOverlay = OverlayEntry(
-      builder: (context) => Positioned(
-        width: MediaQuery.of(context).size.width - (AppTheme.spacingM * 2),
-        child: CompositedTransformFollower(
-          link: _unifiedAddressLayerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(0, 4),
-          child: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(AppTheme.radiusM),
-            color: ThemeHelper.getSurfaceColor(context),
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 320),
-              decoration: BoxDecoration(
-                color: ThemeHelper.getSurfaceColor(context),
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                border: Border.all(
-                  color: ThemeHelper.getBorderColor(context),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+      builder: (context) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final horizontalPadding = AppTheme.spacingM * 2;
+        
+        return Positioned(
+          left: AppTheme.spacingM,
+          right: AppTheme.spacingM,
+          child: CompositedTransformFollower(
+            link: _unifiedAddressLayerLink,
+            showWhenUnlinked: false,
+            offset: const Offset(0, 4),
+            child: Material(
+              elevation: 8,
+              borderRadius: BorderRadius.circular(AppTheme.radiusM),
+              color: Colors.transparent,
+              child: Container(
+                width: screenWidth - horizontalPadding,
+                constraints: const BoxConstraints(maxHeight: 500),
+                decoration: BoxDecoration(
+                  color: ThemeHelper.getSurfaceColor(context),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                  border: Border.all(
+                    color: ThemeHelper.getBorderColor(context),
+                    width: 1,
                   ),
-                ],
-              ),
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _unifiedAddressSuggestions.length,
-                itemBuilder: (context, index) {
-                  final suggestion = _unifiedAddressSuggestions[index];
-                  return _buildUnifiedAddressSuggestionItem(suggestion);
-                },
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: _unifiedAddressSuggestions.isEmpty
+                    ? const SizedBox.shrink()
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.spacingM,
+                              12,
+                              AppTheme.spacingM,
+                              8,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.location_searching,
+                                  size: 18,
+                                  color: ThemeHelper.getPrimaryColor(context),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${_unifiedAddressSuggestions.length} addresses found',
+                                  style: AppTextStyles.bodySmall.copyWith(
+                                    color: ThemeHelper.getTextSecondaryColor(context),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Divider(
+                            height: 1,
+                            thickness: 1,
+                            color: ThemeHelper.getBorderColor(context).withValues(alpha: 0.3),
+                          ),
+                          // Address list
+                          Flexible(
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: _unifiedAddressSuggestions.length,
+                              itemBuilder: (context, index) {
+                                final suggestion = _unifiedAddressSuggestions[index];
+                                return _buildUnifiedAddressSuggestionItem(suggestion);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
     
     Overlay.of(context).insert(_unifiedAddressOverlay!);
   }
   
   Widget _buildUnifiedAddressSuggestionItem(Map<String, dynamic> suggestion) {
-    final fullAddress = suggestion['fullAddress'] as String;
     final street = suggestion['street'] as String? ?? '';
+    final streetName = suggestion['streetName'] as String? ?? '';
     final city = suggestion['city'] as String? ?? '';
-    final doorNumber = suggestion['doorNumber'] as String? ?? '';
+    final state = suggestion['state'] as String? ?? '';
+    var doorNumber = suggestion['doorNumber'] as String? ?? '';
+    final zipCode = suggestion['zipCode'] as String? ?? '';
+    
+    // Debug: Log what we're getting
+    debugPrint('🏠 Displaying suggestion: street="$street", doorNumber="$doorNumber", streetName="$streetName"');
+    
+    // If doorNumber is empty, try to extract it from street
+    if (doorNumber.isEmpty && street.isNotEmpty) {
+      final match = RegExp(r'^(\d+[A-Za-z]?)\s').firstMatch(street);
+      if (match != null) {
+        doorNumber = match.group(1) ?? '';
+        debugPrint('✅ Extracted door number from street: "$doorNumber"');
+      }
+    }
+    
+    // Build complete address line
+    final addressLine1 = street.isNotEmpty ? street : (streetName.isNotEmpty ? streetName : '');
+    final addressLine2Parts = <String>[];
+    if (city.isNotEmpty) addressLine2Parts.add(city);
+    if (state.isNotEmpty && state != city) addressLine2Parts.add(state);
+    final addressLine2 = addressLine2Parts.join(', ');
     
     return InkWell(
       onTap: () {
         _selectUnifiedAddressSuggestion(suggestion);
       },
-      child: Padding(
+      child: Container(
         padding: const EdgeInsets.symmetric(
           horizontal: AppTheme.spacingM,
-          vertical: 12,
+          vertical: 14,
+        ),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: ThemeHelper.getBorderColor(context).withValues(alpha: 0.3),
+              width: 0.5,
+            ),
+          ),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Door number badge (larger and more prominent)
             Container(
-              width: 40,
-              height: 40,
+              width: 52,
+              height: 52,
               decoration: BoxDecoration(
-                color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                gradient: doorNumber.isNotEmpty 
+                    ? LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.15),
+                          ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.08),
+                        ],
+                      )
+                    : null,
+                color: doorNumber.isEmpty 
+                    ? ThemeHelper.getTextSecondaryColor(context).withValues(alpha: 0.08)
+                    : null,
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.3),
-                  width: 1.5,
+                  color: doorNumber.isNotEmpty
+                      ? ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.4)
+                      : ThemeHelper.getBorderColor(context),
+                  width: 2,
                 ),
               ),
-              child: Icon(
-                doorNumber.isNotEmpty ? Icons.home : Icons.location_on,
-                color: ThemeHelper.getPrimaryColor(context),
-                size: 22,
-              ),
+              child: doorNumber.isNotEmpty
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          doorNumber,
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: ThemeHelper.getPrimaryColor(context),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        Text(
+                          'No',
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.6),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 9,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Icon(
+                      Icons.home_outlined,
+                      color: ThemeHelper.getTextSecondaryColor(context),
+                      size: 26,
+                    ),
             ),
-            const SizedBox(width: AppTheme.spacingM),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    street.isNotEmpty ? street : fullAddress.split(',').first,
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: ThemeHelper.getTextPrimaryColor(context),
-                      fontWeight: FontWeight.w600,
+                  // Primary address line (door number + street)
+                  if (addressLine1.isNotEmpty)
+                    Text(
+                      addressLine1,
+                      style: AppTextStyles.bodyLarge.copyWith(
+                        color: ThemeHelper.getTextPrimaryColor(context),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    city.isNotEmpty ? fullAddress : fullAddress.split(',').skip(1).join(',').trim(),
-                    style: AppTextStyles.bodySmall.copyWith(
-                      color: ThemeHelper.getTextSecondaryColor(context),
-                      fontSize: 12,
+                  const SizedBox(height: 6),
+                  // Secondary address line (city, state)
+                  if (addressLine2.isNotEmpty)
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.location_city,
+                          size: 14,
+                          color: ThemeHelper.getTextSecondaryColor(context),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            addressLine2,
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: ThemeHelper.getTextSecondaryColor(context),
+                              fontSize: 13,
+                              height: 1.2,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  const SizedBox(height: 4),
+                  // Postcode with badge
+                  if (zipCode.isNotEmpty)
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.markunread_mailbox,
+                          size: 14,
+                          color: ThemeHelper.getTextSecondaryColor(context),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            zipCode.toUpperCase(),
+                            style: AppTextStyles.bodySmall.copyWith(
+                              color: ThemeHelper.getPrimaryColor(context),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: ThemeHelper.getTextSecondaryColor(context).withValues(alpha: 0.5),
+            const SizedBox(width: 8),
+            // Selection indicator
+            Container(
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 18,
+                color: ThemeHelper.getTextSecondaryColor(context).withValues(alpha: 0.4),
+              ),
             ),
           ],
         ),
@@ -1309,21 +1663,6 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Label Field
-                      _buildTextField(
-                        controller: _labelController,
-                        label: 'Address Label',
-                        hint: 'e.g., Home, Office, Work',
-                        icon: Icons.label_outline,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter an address label';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: AppTheme.spacingL),
-                      
                       // ============================================
                       // UNIFIED ADDRESS SEARCH FIELD
                       // ============================================
@@ -1342,8 +1681,8 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                             controller: _unifiedAddressController,
                             focusNode: _unifiedAddressFocusNode,
                             decoration: InputDecoration(
-                              labelText: '🔍 Search Full Address',
-                              hintText: 'Type any part of your address...',
+                              labelText: 'Search Address',
+                              hintText: '194 Green Lane, Ilford OR IG3 9LQ',
                               prefixIcon: Icon(
                                 Icons.search,
                                 color: ThemeHelper.getPrimaryColor(context),
@@ -1411,7 +1750,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                'Search for your full address, then review auto-filled fields below',
+                                'Enter postcode to see address suggestions',
                                 style: AppTextStyles.bodySmall.copyWith(
                                   color: ThemeHelper.getTextSecondaryColor(context),
                                   fontSize: 11,
@@ -1831,9 +2170,21 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
         };
       }
 
+      // Generate default label from city or street if not provided
+      String addressLabel = _labelController.text.trim();
+      if (addressLabel.isEmpty) {
+        if (_cityController.text.trim().isNotEmpty) {
+          addressLabel = _cityController.text.trim();
+        } else if (_streetController.text.trim().isNotEmpty) {
+          addressLabel = _streetController.text.trim();
+        } else {
+          addressLabel = 'Address';
+        }
+      }
+
       final address = AddressModel(
         id: widget.address?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        label: _labelController.text.trim(),
+        label: addressLabel,
         street: _streetController.text.trim(),
         city: _cityController.text.trim(),
         state: _stateController.text.trim(),

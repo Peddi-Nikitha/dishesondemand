@@ -110,13 +110,30 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         if (addressData != null && mounted) {
-          // Build location label from geocoded data
+          // Build location label from geocoded data - include street for exact location
+          final street = addressData['street'] ?? '';
+          final streetName = addressData['streetName'] ?? '';
           final city = addressData['city'] ?? '';
           final state = addressData['state'] ?? '';
           final country = addressData['country'] ?? '';
           
           String locationLabel = 'Current Location';
-          if (city.isNotEmpty) {
+          
+          // Build detailed location label with street name
+          if (street.isNotEmpty) {
+            // Show full street address with city
+            locationLabel = street;
+            if (city.isNotEmpty) {
+              locationLabel = '$street, $city';
+            }
+          } else if (streetName.isNotEmpty) {
+            // Show street name even without door number
+            locationLabel = streetName;
+            if (city.isNotEmpty) {
+              locationLabel = '$streetName, $city';
+            }
+          } else if (city.isNotEmpty) {
+            // Fallback to city and state
             locationLabel = city;
             if (state.isNotEmpty) {
               locationLabel = '$city, $state';
@@ -124,6 +141,8 @@ class _HomeScreenState extends State<HomeScreen> {
           } else if (country.isNotEmpty) {
             locationLabel = country;
           }
+          
+          debugPrint('📍 Current location: $locationLabel');
           
           setState(() {
             _currentLocationLabel = locationLabel;
@@ -921,11 +940,29 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      // Build location label for display
+      // Build location label for display - include street for exact location
+      final street = addressData['street'] ?? '';
+      final streetName = addressData['streetName'] ?? '';
       final city = addressData['city'] ?? '';
       final state = addressData['state'] ?? '';
+      
       String locationLabel = 'Current Location';
-      if (city.isNotEmpty) {
+      
+      // Build detailed location label with street name
+      if (street.isNotEmpty) {
+        // Show full street address with city
+        locationLabel = street;
+        if (city.isNotEmpty) {
+          locationLabel = '$street, $city';
+        }
+      } else if (streetName.isNotEmpty) {
+        // Show street name even without door number
+        locationLabel = streetName;
+        if (city.isNotEmpty) {
+          locationLabel = '$streetName, $city';
+        }
+      } else if (city.isNotEmpty) {
+        // Fallback to city and state
         locationLabel = city;
         if (state.isNotEmpty) {
           locationLabel = '$city, $state';
@@ -933,6 +970,8 @@ class _HomeScreenState extends State<HomeScreen> {
       } else if (addressData['country']?.isNotEmpty == true) {
         locationLabel = addressData['country']!;
       }
+      
+      debugPrint('📍 Refreshed location: $locationLabel');
       
       // Update current location label in state
       if (mounted) {
