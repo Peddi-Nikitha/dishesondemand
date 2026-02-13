@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_theme.dart';
@@ -9,7 +13,6 @@ import '../../utils/theme_helper.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/user_model.dart';
 import '../../services/location_service.dart';
-import '../../services/postcode_service.dart';
 
 /// Add/Edit Delivery Address screen with form validation and Firestore integration
 class AddAddressScreen extends StatefulWidget {
@@ -38,12 +41,20 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
   Timer? _zipCodeDebounceTimer;
   List<Map<String, dynamic>> _addressSuggestions = [];
   
+  // Google Places API
+  // TODO: Make sure Places API is enabled in Google Cloud Console
+  // Go to: https://console.cloud.google.com/apis/library
+  // Enable: Places API, Geocoding API
+  static const String placesApiKey = "AIzaSyCNlp0nPUMhVzCrgsIXgeSmm-XzAj368uE";
+  var uuid = const Uuid();
+  String _sessionToken = '1234567890';
+  
   // Unified address search field
   final _unifiedAddressController = TextEditingController();
   final FocusNode _unifiedAddressFocusNode = FocusNode();
   final LayerLink _unifiedAddressLayerLink = LayerLink();
   Timer? _unifiedAddressDebounceTimer;
-  List<Map<String, dynamic>> _unifiedAddressSuggestions = [];
+  List<dynamic> _unifiedAddressSuggestions = [];
   OverlayEntry? _unifiedAddressOverlay;
   bool _isSearchingUnifiedAddress = false;
   
@@ -62,6 +73,10 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Test Google Places API connectivity on init
+    _testGooglePlacesConnectivity();
+    
     // If editing, populate fields
     if (widget.address != null) {
       _labelController.text = widget.address!.label; // Keep for editing mode
@@ -115,11 +130,55 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     });
   }
   
+  /// Test connectivity to Google Places API
+  Future<void> _testGooglePlacesConnectivity() async {
+    try {
+      debugPrint('🧪 Testing Google Places API connectivity...');
+      final testUrl = 'https://maps.googleapis.com/maps/api/place/autocomplete/json?input=London&key=$placesApiKey&sessiontoken=test';
+      
+      final response = await http.get(
+        Uri.parse(testUrl),
+        headers: {
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 5));
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK') {
+          debugPrint('✅ Google Places API is working!');
+        } else if (data['status'] == 'REQUEST_DENIED') {
+          debugPrint('❌ Google Places API Error: ${data['error_message']}');
+          debugPrint('⚠️  ACTION REQUIRED: Enable Places API in Google Cloud Console');
+          debugPrint('   Go to: https://console.cloud.google.com/apis/library');
+          debugPrint('   Search for: Places API');
+          debugPrint('   Click: Enable');
+        } else {
+          debugPrint('⚠️  Google Places API Status: ${data['status']}');
+        }
+      } else {
+        debugPrint('❌ HTTP Error ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('❌ Connectivity Test Failed: $e');
+      debugPrint('⚠️  Possible causes:');
+      debugPrint('   1. No internet connection on device/emulator');
+      debugPrint('   2. Firewall blocking googleapis.com');
+      debugPrint('   3. DNS resolution issue');
+      debugPrint('   4. Places API not enabled in Google Cloud Console');
+    }
+  }
+  
   void _onUnifiedAddressChanged() {
+    if (_sessionToken == '1234567890') {
+      setState(() {
+        _sessionToken = uuid.v4();
+      });
+    }
     _unifiedAddressDebounceTimer?.cancel();
     final query = _unifiedAddressController.text.trim();
     
-    // Trigger search for postcodes (minimum 3 chars) or any address (minimum 3 chars)
+    // Trigger search for addresses (minimum 3 chars)
     if (query.length >= 3 && widget.address == null) {
       _unifiedAddressDebounceTimer = Timer(const Duration(milliseconds: 400), () {
         _searchUnifiedAddress(query);
@@ -129,283 +188,112 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     }
   }
   
-  Future<void> _searchUnifiedAddress(String query) async {
-    if (query.length < 3) return;
+  Future<void> _searchUnifiedAddress(String input) async {
+    if (input.length < 3) return;
     
-    // Check if query starts with a number (likely a full address with door number)
-    final startsWithNumber = RegExp(r'^\d').hasMatch(query);
-    
-    // If user types something like "194 Green Lane" or "194", use regular address search
-    if (startsWithNumber) {
-      setState(() {
-        _isSearchingUnifiedAddress = true;
-      });
-      await _searchUnifiedAddressRegular(query);
-      return;
-    }
-    
-    // Normalise query for postcode detection (e.g. "ig3 9lq" -> "IG3 9LQ")
-    final normalizedQuery = query.toUpperCase().replaceAll(RegExp(r'\s+'), ' ').trim();
-    
-    // UK postcode patterns:
-    // Complete: "IG3 9LQ" or "IG39LQ" (outward + inward code)
-    // Only use postcode search for complete postcodes to avoid API errors
-    final completePostcodeRegex = RegExp(r'^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$');
-    final normalizedQueryNoSpaces = normalizedQuery.replaceAll(' ', '');
-    final isCompletePostcode = completePostcodeRegex.hasMatch(normalizedQueryNoSpaces);
-
     setState(() {
       _isSearchingUnifiedAddress = true;
     });
-    
-    try {
-      // Only use postcode search for complete postcodes (e.g., "IG3 9LQ")
-      // For partial postcodes (e.g., "IG3"), use regular address search
-      if (isCompletePostcode) {
-        await _searchUnifiedAddressByPostcode(normalizedQuery);
-        return;
-      }
 
-      // Use regular address search for partial postcodes and other queries
-      await _searchUnifiedAddressRegular(query);
-    } catch (e) {
-      debugPrint('❌ Unified address search error: $e');
-      if (mounted) {
-        setState(() {
-          _isSearchingUnifiedAddress = false;
-        });
-      }
-    }
-  }
-  
-  /// Regular address search for partial postcodes and general address queries
-  Future<void> _searchUnifiedAddressRegular(String query) async {
     try {
-      debugPrint('🔍 Unified Address Search: "$query"');
+      String baseURL = 'https://maps.googleapis.com/maps/api/place/autocomplete/json';
+      String request = '$baseURL?input=$input&key=$placesApiKey&sessiontoken=$_sessionToken';
       
-      // Extract door number if present at the start (e.g., "194 Green Lane")
-      String? extractedDoorNumber;
-      String searchAddress = query;
-      final doorMatch = RegExp(r'^(\d+)\s+(.+)').firstMatch(query);
-      if (doorMatch != null) {
-        extractedDoorNumber = doorMatch.group(1);
-        searchAddress = doorMatch.group(2) ?? query;
-        debugPrint('🚪 Extracted door number: $extractedDoorNumber, searching for: $searchAddress');
+      if (kDebugMode) {
+        debugPrint('🔍 Calling Google Places API...');
+        debugPrint('📍 URL: $request');
       }
       
-      final country = _countryController.text.trim().isNotEmpty 
-          ? _countryController.text.trim() 
-          : 'United Kingdom';
+      // Add timeout and headers for better connectivity
+      var response = await http.get(
+        Uri.parse(request),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout - check your internet connection');
+        },
+      );
       
-      // Search with country for better results (works for postcodes and addresses)
-      final searchQuery = '$query, $country';
-      List<Location> locations;
-      try {
-        locations = await locationFromAddress(searchQuery);
-      } catch (e) {
-        debugPrint('⚠️ Address search error: $e');
-        if (mounted) {
-          setState(() {
-            _isSearchingUnifiedAddress = false;
-          });
-        }
-        return;
+      if (kDebugMode) {
+        debugPrint('✅ Response received: ${response.statusCode}');
       }
       
-      // Handle empty locations
-      if (locations.isEmpty || !mounted) {
-        if (mounted) {
-          setState(() {
-            _isSearchingUnifiedAddress = false;
-          });
-        }
-        return;
+      var data = json.decode(response.body);
+      
+      if (kDebugMode) {
+        debugPrint('📡 Google Places API Response Status: ${response.statusCode}');
+        debugPrint('📦 Response body: ${data.toString()}');
       }
       
-      debugPrint('📍 Found ${locations.length} locations');
-      
-      final suggestions = <Map<String, dynamic>>[];
-      final seenAddresses = <String>{};
-      
-      // Process up to 10 locations
-      final locationsToProcess = locations.length > 10 ? 10 : locations.length;
-      
-      for (int i = 0; i < locationsToProcess; i++) {
-        try {
-          final addressDetails = await LocationService.reverseGeocode(
-            locations[i].latitude,
-            locations[i].longitude,
-          );
-          
-          if (addressDetails != null) {
-            // Use extracted door number from query if available, otherwise use geocoded one
-            final doorNumber = extractedDoorNumber ?? (addressDetails['doorNumber'] ?? '');
-            final streetName = addressDetails['streetName'] ?? '';
-            final street = doorNumber.isNotEmpty && streetName.isNotEmpty
-                ? '$doorNumber $streetName'
-                : (addressDetails['street'] ?? '');
-            
-            final fullAddress = _buildFullAddressString({
-              ...addressDetails,
-              'doorNumber': doorNumber,
-              'street': street,
-            });
-            
-            if (fullAddress.isNotEmpty && !seenAddresses.contains(fullAddress.toLowerCase())) {
-              seenAddresses.add(fullAddress.toLowerCase());
-              suggestions.add({
-                'fullAddress': fullAddress,
-                'doorNumber': doorNumber,
-                'streetName': streetName,
-                'street': street,
-                'city': addressDetails['city'] ?? '',
-                'state': addressDetails['state'] ?? '',
-                'zipCode': addressDetails['zipCode'] ?? '',
-                'country': addressDetails['country'] ?? country,
-              });
-              
-              debugPrint('✅ Added: $street (door: $doorNumber)');
-            }
-          }
-        } catch (e) {
-          debugPrint('⚠️ Error processing location $i: $e');
-          continue;
-        }
-      }
-      
-      if (mounted) {
-        final finalSuggestions = suggestions.take(8).toList();
-        setState(() {
-          _unifiedAddressSuggestions = finalSuggestions;
-          _isSearchingUnifiedAddress = false;
-        });
-        
-        // Show or hide suggestions after state update
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (response.statusCode == 200) {
+        // Check for API errors in response
+        if (data['status'] == 'REQUEST_DENIED') {
+          debugPrint('❌ Places API Error: ${data['error_message'] ?? 'REQUEST_DENIED'}');
+          debugPrint('⚠️ Make sure Places API is enabled in Google Cloud Console');
           if (mounted) {
-            if (finalSuggestions.isNotEmpty && _unifiedAddressFocusNode.hasFocus) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Places API error: Make sure Places API is enabled in Google Cloud Console'),
+                backgroundColor: AppColors.error,
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
+          return;
+        }
+        
+        if (mounted) {
+          final predictions = data['predictions'] as List? ?? [];
+          setState(() {
+            _unifiedAddressSuggestions = predictions;
+            _isSearchingUnifiedAddress = false;
+          });
+          
+          if (kDebugMode) {
+            debugPrint('✅ Found ${predictions.length} address suggestions');
+          }
+          
+          // Show overlay dropdown if we have results and the field is focused
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _unifiedAddressSuggestions.isNotEmpty && _unifiedAddressFocusNode.hasFocus) {
               _showUnifiedAddressSuggestions();
             } else {
               _hideUnifiedAddressSuggestions();
             }
-          }
-        });
+          });
+        }
+      } else {
+        debugPrint('❌ HTTP Error ${response.statusCode}: ${response.body}');
+        throw Exception('HTTP ${response.statusCode}: Failed to load predictions');
       }
     } catch (e) {
-      debugPrint('❌ Unified address search error: $e');
+      debugPrint('❌ Google Places API error: $e');
+      debugPrint('⚠️ Common causes:');
+      debugPrint('   1. Places API not enabled in Google Cloud Console');
+      debugPrint('   2. API key restrictions blocking the request');
+      debugPrint('   3. Network connectivity issue');
+      
       if (mounted) {
         setState(() {
           _isSearchingUnifiedAddress = false;
         });
-      }
-    }
-  }
-  
-  /// Specialised search path when user enters a UK‑style postcode like "IG3 9LQ".
-  /// Uses the free postcodes.io API for reliable UK postcode lookups.
-  Future<void> _searchUnifiedAddressByPostcode(String postcode) async {
-    try {
-      debugPrint('🔍 Unified Address Postcode Search (using postcodes.io): "$postcode"');
-
-      // First, try to lookup the exact postcode
-      List<Map<String, dynamic>> suggestions = await PostcodeService.lookupPostcode(postcode);
-      
-      // If that returns results, also try to get nearby postcodes for more options
-      if (suggestions.isNotEmpty && mounted) {
-        final nearbyResults = await PostcodeService.searchNearbyPostcodes(postcode);
         
-        // Merge results, avoiding duplicates
-        final seenKeys = suggestions.map((s) => '${s['zipCode']?.toLowerCase()}').toSet();
-        
-        for (var nearby in nearbyResults) {
-          final key = '${nearby['zipCode']?.toLowerCase()}';
-          if (!seenKeys.contains(key)) {
-            suggestions.add(nearby);
-            seenKeys.add(key);
-          }
+        // Show user-friendly error
+        if (e.toString().contains('Failed to fetch')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Network error: Check your internet connection or enable Places API in Google Cloud Console'),
+              backgroundColor: AppColors.error,
+              duration: Duration(seconds: 5),
+            ),
+          );
         }
       }
-      
-      // If postcode lookup fails or returns nothing, fall back to geocoding search
-      if (suggestions.isEmpty) {
-        debugPrint('⚠️ Postcode lookup returned no results, falling back to geocoding');
-        if (mounted) {
-          await _searchUnifiedAddressRegular(postcode);
-        }
-        return;
-      }
-
-      if (!mounted) return;
-
-      debugPrint('✅ Found ${suggestions.length} addresses for postcode: $postcode');
-
-      // Prioritise suggestions that have a door number (though postcodes.io doesn't provide them)
-      suggestions.sort((a, b) {
-        final aHasDoor = (a['doorNumber'] as String? ?? '').isNotEmpty;
-        final bHasDoor = (b['doorNumber'] as String? ?? '').isNotEmpty;
-        if (aHasDoor && !bHasDoor) return -1;
-        if (!aHasDoor && bHasDoor) return 1;
-        return 0;
-      });
-
-      // Show up to 15 suggestions
-      final finalSuggestions = suggestions.take(15).toList();
-
-      setState(() {
-        _unifiedAddressSuggestions = finalSuggestions;
-        _isSearchingUnifiedAddress = false;
-      });
-
-      // Show overlay dropdown if we have results and the field is focused
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (finalSuggestions.isNotEmpty && _unifiedAddressFocusNode.hasFocus) {
-          _showUnifiedAddressSuggestions();
-        } else {
-          _hideUnifiedAddressSuggestions();
-        }
-      });
-    } catch (e) {
-      debugPrint('❌ Unified postcode search unexpected error: $e');
-      if (mounted) {
-        setState(() {
-          _isSearchingUnifiedAddress = false;
-        });
-        // Fall back to regular search on error
-        await _searchUnifiedAddressRegular(postcode);
-      }
     }
-  }
-  
-  String _buildFullAddressString(Map<String, String> addressDetails) {
-    final parts = <String>[];
-    
-    final street = addressDetails['street'] ?? '';
-    if (street.isNotEmpty) {
-      parts.add(street);
-    }
-    
-    final city = addressDetails['city'] ?? '';
-    if (city.isNotEmpty) {
-      parts.add(city);
-    }
-    
-    final state = addressDetails['state'] ?? '';
-    if (state.isNotEmpty && state != city) {
-      parts.add(state);
-    }
-    
-    final zipCode = addressDetails['zipCode'] ?? '';
-    if (zipCode.isNotEmpty) {
-      parts.add(zipCode);
-    }
-    
-    final country = addressDetails['country'] ?? '';
-    if (country.isNotEmpty) {
-      parts.add(country);
-    }
-    
-    return parts.join(', ');
   }
   
   void _showUnifiedAddressSuggestions() {
@@ -424,14 +312,14 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
           child: CompositedTransformFollower(
             link: _unifiedAddressLayerLink,
             showWhenUnlinked: false,
-            offset: const Offset(0, 4),
+            offset: const Offset(0, 70), // Increased from 4 to 70 to clear the text field
             child: Material(
               elevation: 8,
               borderRadius: BorderRadius.circular(AppTheme.radiusM),
               color: Colors.transparent,
               child: Container(
                 width: screenWidth - horizontalPadding,
-                constraints: const BoxConstraints(maxHeight: 500),
+                constraints: const BoxConstraints(maxHeight: 400), // Reduced from 500 to fit better
                 decoration: BoxDecoration(
                   color: ThemeHelper.getSurfaceColor(context),
                   borderRadius: BorderRadius.circular(AppTheme.radiusM),
@@ -441,8 +329,8 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 10,
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
                   ],
@@ -509,32 +397,18 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     Overlay.of(context).insert(_unifiedAddressOverlay!);
   }
   
-  Widget _buildUnifiedAddressSuggestionItem(Map<String, dynamic> suggestion) {
-    final street = suggestion['street'] as String? ?? '';
-    final streetName = suggestion['streetName'] as String? ?? '';
-    final city = suggestion['city'] as String? ?? '';
-    final state = suggestion['state'] as String? ?? '';
-    var doorNumber = suggestion['doorNumber'] as String? ?? '';
-    final zipCode = suggestion['zipCode'] as String? ?? '';
+  Widget _buildUnifiedAddressSuggestionItem(dynamic suggestion) {
+    // Google Places API returns a "description" field with the full address
+    final description = suggestion['description'] as String? ?? '';
     
-    // Debug: Log what we're getting
-    debugPrint('🏠 Displaying suggestion: street="$street", doorNumber="$doorNumber", streetName="$streetName"');
-    
-    // If doorNumber is empty, try to extract it from street
-    if (doorNumber.isEmpty && street.isNotEmpty) {
-      final match = RegExp(r'^(\d+[A-Za-z]?)\s').firstMatch(street);
-      if (match != null) {
-        doorNumber = match.group(1) ?? '';
-        debugPrint('✅ Extracted door number from street: "$doorNumber"');
-      }
+    // Try to extract door number if present at the start
+    String? doorNumber;
+    final doorMatch = RegExp(r'^(\d+[A-Za-z]?)\s').firstMatch(description);
+    if (doorMatch != null) {
+      doorNumber = doorMatch.group(1);
     }
     
-    // Build complete address line
-    final addressLine1 = street.isNotEmpty ? street : (streetName.isNotEmpty ? streetName : '');
-    final addressLine2Parts = <String>[];
-    if (city.isNotEmpty) addressLine2Parts.add(city);
-    if (state.isNotEmpty && state != city) addressLine2Parts.add(state);
-    final addressLine2 = addressLine2Parts.join(', ');
+    debugPrint('🏠 Displaying Google Places suggestion: "$description"');
     
     return InkWell(
       onTap: () {
@@ -556,33 +430,26 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Door number badge (larger and more prominent)
+            // Location icon
             Container(
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                gradient: doorNumber.isNotEmpty 
-                    ? LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.15),
-                          ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.08),
-                        ],
-                      )
-                    : null,
-                color: doorNumber.isEmpty 
-                    ? ThemeHelper.getTextSecondaryColor(context).withValues(alpha: 0.08)
-                    : null,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.15),
+                    ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.08),
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: doorNumber.isNotEmpty
-                      ? ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.4)
-                      : ThemeHelper.getBorderColor(context),
+                  color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.4),
                   width: 2,
                 ),
               ),
-              child: doorNumber.isNotEmpty
+              child: doorNumber != null
                   ? Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -606,8 +473,8 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                       ],
                     )
                   : Icon(
-                      Icons.home_outlined,
-                      color: ThemeHelper.getTextSecondaryColor(context),
+                      Icons.location_on,
+                      color: ThemeHelper.getPrimaryColor(context),
                       size: 26,
                     ),
             ),
@@ -617,80 +484,37 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Primary address line (door number + street)
-                  if (addressLine1.isNotEmpty)
-                    Text(
-                      addressLine1,
-                      style: AppTextStyles.bodyLarge.copyWith(
-                        color: ThemeHelper.getTextPrimaryColor(context),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                  // Full address from Google Places
+                  Text(
+                    description,
+                    style: AppTextStyles.bodyLarge.copyWith(
+                      color: ThemeHelper.getTextPrimaryColor(context),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      height: 1.4,
                     ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 6),
-                  // Secondary address line (city, state)
-                  if (addressLine2.isNotEmpty)
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_city,
-                          size: 14,
+                  // Place ID indicator
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.verified,
+                        size: 14,
+                        color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.7),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Verified by Google',
+                        style: AppTextStyles.bodySmall.copyWith(
                           color: ThemeHelper.getTextSecondaryColor(context),
+                          fontSize: 11,
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            addressLine2,
-                            style: AppTextStyles.bodyMedium.copyWith(
-                              color: ThemeHelper.getTextSecondaryColor(context),
-                              fontSize: 13,
-                              height: 1.2,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 4),
-                  // Postcode with badge
-                  if (zipCode.isNotEmpty)
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.markunread_mailbox,
-                          size: 14,
-                          color: ThemeHelper.getTextSecondaryColor(context),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.2),
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            zipCode.toUpperCase(),
-                            style: AppTextStyles.bodySmall.copyWith(
-                              color: ThemeHelper.getPrimaryColor(context),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -710,38 +534,90 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     );
   }
   
-  void _selectUnifiedAddressSuggestion(Map<String, dynamic> suggestion) {
+  Future<void> _selectUnifiedAddressSuggestion(dynamic suggestion) async {
     _hideUnifiedAddressSuggestions();
     
+    final selectedAddress = suggestion['description'] as String;
+    
+    // Update the search field with selected address
     setState(() {
-      // Auto-fill all fields
-      _streetController.text = suggestion['street'] as String? ?? '';
-      _cityController.text = suggestion['city'] as String? ?? '';
-      _stateController.text = suggestion['state'] as String? ?? '';
-      _zipCodeController.text = suggestion['zipCode'] as String? ?? '';
-      _countryController.text = suggestion['country'] as String? ?? 'United Kingdom';
-      
-      // Clear unified search field
-      _unifiedAddressController.clear();
+      _unifiedAddressController.text = selectedAddress;
     });
     
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text('Address fields auto-filled! Review and adjust if needed.'),
-            ),
-          ],
+    // Parse the address from description
+    // Google Places description format: "Street, City, State ZIP, Country"
+    try {
+      final parts = selectedAddress.split(', ');
+      
+      if (parts.isNotEmpty) {
+        // First part is usually the street address
+        _streetController.text = parts[0];
+        
+        if (parts.length > 1) {
+          // Second part is usually city
+          _cityController.text = parts[1];
+        }
+        
+        if (parts.length > 2) {
+          // Try to extract postal code and state from remaining parts
+          for (int i = 2; i < parts.length; i++) {
+            final part = parts[i];
+            
+            // Check for UK postcode pattern
+            final postcodeMatch = RegExp(r'([A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})', caseSensitive: false).firstMatch(part);
+            if (postcodeMatch != null) {
+              _zipCodeController.text = postcodeMatch.group(1) ?? '';
+              // Remove postcode from the part to get state
+              final stateText = part.replaceAll(postcodeMatch.group(0) ?? '', '').trim();
+              if (stateText.isNotEmpty && _stateController.text.isEmpty) {
+                _stateController.text = stateText;
+              }
+            } else if (i == parts.length - 1) {
+              // Last part is usually country
+              _countryController.text = part;
+            } else if (_stateController.text.isEmpty) {
+              // Middle parts could be state/county
+              _stateController.text = part;
+            }
+          }
+        }
+        
+        // Set default country if not set
+        if (_countryController.text.isEmpty) {
+          _countryController.text = 'United Kingdom';
+        }
+      }
+      
+      // Clear unified search field after auto-filling
+      _unifiedAddressController.clear();
+      
+      setState(() {});
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Address fields auto-filled! Review and adjust if needed.'),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
         ),
-        backgroundColor: AppColors.success,
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('❌ Error parsing address: $e');
+      // If parsing fails, just use the full address as street
+      setState(() {
+        _streetController.text = selectedAddress;
+        _unifiedAddressController.clear();
+      });
+    }
   }
   
   void _hideUnifiedAddressSuggestions() {
@@ -1668,23 +1544,26 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                       // ============================================
                       CompositedTransformTarget(
                         link: _unifiedAddressLayerLink,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                            border: Border.all(
-                              color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.2),
-                              width: 1.5,
+                        child: Material(
+                          elevation: 2,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: ThemeHelper.getSurfaceColor(context),
+                              borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                              border: Border.all(
+                                color: ThemeHelper.getPrimaryColor(context).withValues(alpha: 0.3),
+                                width: 1.5,
+                              ),
                             ),
-                          ),
-                          child: TextFormField(
-                            controller: _unifiedAddressController,
-                            focusNode: _unifiedAddressFocusNode,
+                            child: TextFormField(
+                              controller: _unifiedAddressController,
+                              focusNode: _unifiedAddressFocusNode,
                             decoration: InputDecoration(
                               labelText: 'Search Address',
-                              hintText: '194 Green Lane, Ilford OR IG3 9LQ',
+                              hintText: 'Search your location here',
                               prefixIcon: Icon(
-                                Icons.search,
+                                Icons.map,
                                 color: ThemeHelper.getPrimaryColor(context),
                               ),
                               suffixIcon: _isSearchingUnifiedAddress
@@ -1730,8 +1609,9 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                                 borderSide: BorderSide.none,
                               ),
                             ),
-                            style: AppTextStyles.bodyMedium.copyWith(
-                              color: ThemeHelper.getTextPrimaryColor(context),
+                              style: AppTextStyles.bodyMedium.copyWith(
+                                color: ThemeHelper.getTextPrimaryColor(context),
+                              ),
                             ),
                           ),
                         ),
@@ -1750,7 +1630,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                'Enter postcode to see address suggestions',
+                                'Start typing to see address suggestions from Google',
                                 style: AppTextStyles.bodySmall.copyWith(
                                   color: ThemeHelper.getTextSecondaryColor(context),
                                   fontSize: 11,

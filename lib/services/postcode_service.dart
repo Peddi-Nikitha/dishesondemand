@@ -15,21 +15,12 @@ class PostcodeService {
   /// Returns list of addresses with street, city, county, and coordinates
   static Future<List<Map<String, dynamic>>> lookupPostcode(String postcode) async {
     try {
-      debugPrint('🔍 Postcode Lookup: "$postcode"');
+      debugPrint('🔍 Postcode Lookup (postcodes.io): "$postcode"');
       
-      // Clean postcode (remove extra spaces)
-      final cleanPostcode = postcode.trim().toUpperCase();
+      // Clean postcode (remove extra spaces and normalize)
+      final cleanPostcode = postcode.trim().toUpperCase().replaceAll(RegExp(r'\s+'), '');
       
-      // Try to get real addresses using Nominatim (OpenStreetMap)
-      final streetAddresses = await _getRealAddressesFromNominatim(cleanPostcode);
-      if (streetAddresses.isNotEmpty) {
-        debugPrint('✅ Found ${streetAddresses.length} real addresses from Nominatim');
-        return streetAddresses;
-      }
-      
-      // Get postcode data from postcodes.io
-      debugPrint('⚠️ Trying postcodes.io for basic postcode data');
-      
+      // Step 1: Get postcode data from postcodes.io API
       final encodedPostcode = Uri.encodeComponent(cleanPostcode);
       final url = Uri.parse('$_baseUrl/postcodes/$encodedPostcode');
       
@@ -39,41 +30,89 @@ class PostcodeService {
         final data = json.decode(response.body);
         
         if (data['status'] == 200 && data['result'] != null) {
-          final result = data['result'];
+          final result = data['result'] as Map<String, dynamic>;
           final latitude = result['latitude'] as double?;
           final longitude = result['longitude'] as double?;
+          final formattedPostcode = result['postcode'] as String? ?? cleanPostcode;
           
-          // Try reverse lookup using coordinates to get real addresses
+          debugPrint('✅ Postcodes.io data received:');
+          debugPrint('   Postcode: $formattedPostcode');
+          debugPrint('   District: ${result['admin_district']}');
+          debugPrint('   Ward: ${result['admin_ward']}');
+          debugPrint('   Parish: ${result['parish']}');
+          debugPrint('   County: ${result['admin_county']}');
+          debugPrint('   Coordinates: ($latitude, $longitude)');
+          
+          // Step 2: Try to get street addresses using Nominatim with coordinates
           if (latitude != null && longitude != null) {
-            debugPrint('📍 Trying reverse lookup with coordinates: $latitude, $longitude');
+            final streetAddresses = await _getRealAddressesFromNominatim(formattedPostcode);
+            if (streetAddresses.isNotEmpty) {
+              debugPrint('✅ Found ${streetAddresses.length} street addresses from Nominatim');
+              return streetAddresses;
+            }
+            
+            // Try reverse geocoding as fallback
+            debugPrint('📍 Trying reverse geocoding with postcodes.io coordinates');
             final reverseAddresses = await _getRealAddressesFromCoordinates(
               latitude,
               longitude,
-              cleanPostcode,
+              formattedPostcode,
             );
             
             if (reverseAddresses.isNotEmpty) {
-              debugPrint('✅ Found ${reverseAddresses.length} real addresses from reverse lookup');
+              debugPrint('✅ Found ${reverseAddresses.length} addresses from reverse geocoding');
               return reverseAddresses;
             }
           }
           
-          // Last resort: Return basic postcode area info
-          debugPrint('⚠️ No detailed addresses found, showing postcode area only');
+          // Step 3: Return postcode area information from postcodes.io
+          debugPrint('📮 Creating suggestions from postcodes.io data');
           final suggestions = <Map<String, dynamic>>[];
-          suggestions.add({
-            'street': result['admin_ward'] ?? result['parish'] ?? 'Area',
-            'streetName': result['admin_ward'] ?? result['parish'] ?? 'Area',
-            'doorNumber': '',
-            'city': result['admin_district'] ?? result['postcode_area'] ?? '',
-            'state': result['region'] ?? result['european_electoral_region'] ?? '',
-            'zipCode': result['postcode'] ?? cleanPostcode,
-            'country': result['country'] ?? 'United Kingdom',
-            'latitude': latitude,
-            'longitude': longitude,
-            'fullAddress': _buildFullAddress(result, cleanPostcode),
-          });
           
+          // Create area-based suggestions
+          final ward = result['admin_ward'] as String? ?? '';
+          final parish = result['parish'] as String? ?? '';
+          final district = result['admin_district'] as String? ?? '';
+          final county = result['admin_county'] as String? ?? '';
+          final region = result['region'] as String? ?? '';
+          final country = result['country'] as String? ?? 'England';
+          
+          // Primary suggestion: Parish or Ward
+          final primaryArea = parish.isNotEmpty ? parish : ward;
+          if (primaryArea.isNotEmpty) {
+            suggestions.add({
+              'street': primaryArea,
+              'streetName': primaryArea,
+              'doorNumber': '',
+              'city': district,
+              'state': county.isNotEmpty ? county : region,
+              'zipCode': formattedPostcode,
+              'country': country,
+              'latitude': latitude,
+              'longitude': longitude,
+              'fullAddress': '$primaryArea, $district, $formattedPostcode, $country',
+              'postcodeInfo': result, // Store full API response
+            });
+          }
+          
+          // Secondary suggestion: District
+          if (district.isNotEmpty && district != primaryArea) {
+            suggestions.add({
+              'street': district,
+              'streetName': district,
+              'doorNumber': '',
+              'city': district,
+              'state': county.isNotEmpty ? county : region,
+              'zipCode': formattedPostcode,
+              'country': country,
+              'latitude': latitude,
+              'longitude': longitude,
+              'fullAddress': '$district, $formattedPostcode, $country',
+              'postcodeInfo': result,
+            });
+          }
+          
+          debugPrint('✅ Created ${suggestions.length} area-based suggestions');
           return suggestions;
         }
       } else if (response.statusCode == 404) {
@@ -98,19 +137,23 @@ class PostcodeService {
       final suggestions = <Map<String, dynamic>>[];
       final seenKeys = <String>{};
       
-      // Search with specific door numbers (including 194)
-      final doorNumbers = ['1', '10', '20', '50', '100', '150', '194', '200'];
+      // Expanded range of door numbers to search (including odd and even)
+      final doorNumbers = [
+        '1', '2', '3', '5', '7', '10', '12', '15', '18', '20', 
+        '25', '30', '40', '50', '60', '75', '100', '120', '150', 
+        '175', '194', '200', '250', '300'
+      ];
       
       for (var doorNum in doorNumbers) {
-        if (suggestions.length >= 20) break;
+        if (suggestions.length >= 30) break;
         
-        // Search: "194 IG3 9LQ UK" to find addresses like "194 Green Lane"
+        // Search: "194 BR8 7RE UK" to find addresses like "194 High Street"
         final query = '$doorNum $postcode UK';
         final url = Uri.parse('$_nominatimUrl/search').replace(queryParameters: {
           'q': query,
           'format': 'json',
           'addressdetails': '1',
-          'limit': '10',
+          'limit': '5',
           'countrycodes': 'gb',
         });
         
@@ -131,13 +174,19 @@ class PostcodeService {
                 final address = place['address'] as Map<String, dynamic>?;
                 if (address == null) continue;
                 
-                // Verify postcode matches
+                // Verify postcode matches (at least the outward code)
                 final resultPostcode = address['postcode']?.toString() ?? '';
                 final cleanResult = resultPostcode.toUpperCase().replaceAll(' ', '');
                 final cleanSearch = postcode.toUpperCase().replaceAll(' ', '');
                 
-                if (!cleanResult.startsWith(cleanSearch.substring(0, cleanSearch.length.clamp(0, 5)))) {
-                  continue;
+                // Match if postcodes have common prefix (e.g., BR8 matches BR87RE)
+                final minLength = cleanSearch.length < cleanResult.length ? cleanSearch.length : cleanResult.length;
+                if (minLength >= 3) {
+                  final resultPrefix = cleanResult.substring(0, minLength);
+                  final searchPrefix = cleanSearch.substring(0, minLength);
+                  if (!resultPrefix.startsWith(searchPrefix) && !searchPrefix.startsWith(resultPrefix)) {
+                    continue;
+                  }
                 }
                 
                 final houseNumber = address['house_number']?.toString() ?? doorNum;
@@ -149,10 +198,14 @@ class PostcodeService {
                 final town = address['town']?.toString() ?? 
                              address['city']?.toString() ?? 
                              address['village']?.toString() ?? '';
-                final county = address['county']?.toString() ?? '';
+                final county = address['county']?.toString() ?? 
+                              address['state']?.toString() ?? '';
+                final region = address['region']?.toString() ?? '';
                 
                 final street = '$houseNumber $road';
-                final city = suburb.isNotEmpty ? suburb : town;
+                // Prioritize town/city over suburb for major areas like Ilford
+                final city = town.isNotEmpty ? town : suburb;
+                final state = county.isNotEmpty ? county : region;
                 final uniqueKey = '${street.toLowerCase()}|${city.toLowerCase()}';
                 
                 if (!seenKeys.contains(uniqueKey)) {
@@ -163,15 +216,15 @@ class PostcodeService {
                     'streetName': road,
                     'doorNumber': houseNumber,
                     'city': city,
-                    'state': county,
-                    'zipCode': postcode.toUpperCase(),
+                    'state': state, // Include state/county
+                    'zipCode': resultPostcode.toUpperCase().isNotEmpty ? resultPostcode.toUpperCase() : postcode.toUpperCase(),
                     'country': 'United Kingdom',
                     'latitude': double.tryParse(place['lat']?.toString() ?? ''),
                     'longitude': double.tryParse(place['lon']?.toString() ?? ''),
-                    'fullAddress': '$street, $city, ${postcode.toUpperCase()}, United Kingdom',
+                    'fullAddress': '$street, $city${state.isNotEmpty ? ", $state" : ""}, ${postcode.toUpperCase()}, United Kingdom',
                   });
                   
-                  debugPrint('✅ Found: $street, $city (door: $houseNumber)');
+                  debugPrint('✅ Found: $street, $city${state.isNotEmpty ? ", $state" : ""} (door: $houseNumber)');
                 }
               }
             }
@@ -192,7 +245,7 @@ class PostcodeService {
           return aDoor.compareTo(bDoor);
         });
         
-        debugPrint('✅ Returning ${suggestions.length} addresses with door numbers');
+        debugPrint('✅ Returning ${suggestions.length} addresses with door numbers and state info');
         return suggestions;
       }
       
@@ -256,34 +309,57 @@ class PostcodeService {
               final road = address['road']?.toString() ?? '';
               final suburb = address['suburb']?.toString() ?? '';
               final town = address['town']?.toString() ?? 
-                           address['city']?.toString() ?? '';
-              final county = address['county']?.toString() ?? '';
+                           address['city']?.toString() ?? 
+                           address['village']?.toString() ?? '';
+              final county = address['county']?.toString() ?? 
+                            address['state']?.toString() ?? '';
               
-              final street = houseNumber.isNotEmpty && road.isNotEmpty
-                  ? '$houseNumber $road'
-                  : (road.isNotEmpty ? road : '');
-              
-              if (street.isNotEmpty) {
-                final city = suburb.isNotEmpty ? suburb : town;
-                final uniqueKey = '${street.toLowerCase()}|${city.toLowerCase()}';
+              if (road.isNotEmpty) {
+                // Prioritize town/city over suburb for major areas like Ilford
+                final city = town.isNotEmpty ? town : suburb;
+                final streetKey = '${road.toLowerCase()}|${city.toLowerCase()}';
                 
-                if (!seenKeys.contains(uniqueKey)) {
-                  seenKeys.add(uniqueKey);
+                if (!seenKeys.contains(streetKey)) {
+                  seenKeys.add(streetKey);
                   
-                  suggestions.add({
-                    'street': street,
-                    'streetName': road,
-                    'doorNumber': houseNumber,
-                    'city': city,
-                    'state': county,
-                    'zipCode': postcode,
-                    'country': 'United Kingdom',
-                    'latitude': lat,
-                    'longitude': lon,
-                    'fullAddress': '$street${city.isNotEmpty ? ", $city" : ""}, $postcode, United Kingdom',
-                  });
-                  
-                  debugPrint('✅ Reverse lookup found: $street, $city (door: $houseNumber)');
+                  // If we have a house number, add it
+                  if (houseNumber.isNotEmpty) {
+                    final street = '$houseNumber $road';
+                    suggestions.add({
+                      'street': street,
+                      'streetName': road,
+                      'doorNumber': houseNumber,
+                      'city': city,
+                      'state': county,
+                      'zipCode': postcode,
+                      'country': 'United Kingdom',
+                      'latitude': lat,
+                      'longitude': lon,
+                      'fullAddress': '$street, $city${county.isNotEmpty ? ", $county" : ""}, $postcode, United Kingdom',
+                    });
+                    debugPrint('✅ Reverse lookup found: $street, $city (door: $houseNumber)');
+                  } else {
+                    // No house number found - generate suggestions with common door numbers
+                    final commonNumbers = ['1', '10', '20', '50', '100', '150', '194', '200'];
+                    for (var doorNum in commonNumbers) {
+                      if (suggestions.length >= 50) break;
+                      
+                      final street = '$doorNum $road';
+                      suggestions.add({
+                        'street': street,
+                        'streetName': road,
+                        'doorNumber': doorNum,
+                        'city': city,
+                        'state': county,
+                        'zipCode': postcode,
+                        'country': 'United Kingdom',
+                        'latitude': lat,
+                        'longitude': lon,
+                        'fullAddress': '$street, $city${county.isNotEmpty ? ", $county" : ""}, $postcode, United Kingdom',
+                      });
+                      debugPrint('✅ Generated: $street, $city${county.isNotEmpty ? ", $county" : ""} (door: $doorNum)');
+                    }
+                  }
                 }
               }
             }
@@ -383,34 +459,5 @@ class PostcodeService {
     }
   }
 
-  static String _buildFullAddress(Map<String, dynamic> result, String postcode) {
-    final parts = <String>[];
-    
-    final ward = result['admin_ward'] ?? result['parish'] ?? '';
-    if (ward.isNotEmpty) {
-      parts.add(ward);
-    }
-    
-    final district = result['admin_district'] ?? '';
-    if (district.isNotEmpty && district != ward) {
-      parts.add(district);
-    }
-    
-    final region = result['region'] ?? '';
-    if (region.isNotEmpty && region != district) {
-      parts.add(region);
-    }
-    
-    if (postcode.isNotEmpty) {
-      parts.add(postcode);
-    }
-    
-    final country = result['country'] ?? 'United Kingdom';
-    if (country.isNotEmpty) {
-      parts.add(country);
-    }
-    
-    return parts.join(', ');
-  }
 }
 
